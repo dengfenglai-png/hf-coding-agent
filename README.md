@@ -28,14 +28,33 @@
 
 ```bash
 npm install
-export NANOPI_API_KEY=your-api-key
-npm run dev
+npm run build
+npm link          # 全局注册 hf-coding-agent 命令
 ```
+
+之后在任意项目目录里：
+
+```bash
+cd your-project
+hf-coding-agent          # 进入 harness，agent 以当前目录为工作区
+hf-coding-agent -c       # 续接该目录最近一次会话
+```
+
+session 按启动目录隔离，存放在 `~/.nanopi/projects/<目录 slug>/`；不带 `-c` 时默认开新会话。
+
+开发模式：`npm run dev`（源码直跑，等价于 hf-coding-agent）。
+
+API key 有三种给法，按优先级：`--api-key` 参数 > `NANOPI_API_KEY` 环境变量 > `~/.nanopi/config.json`。一个都没有时，首次运行会引导你录入并保存到配置文件（权限 600）。
+
+内置 provider 预设（自动带出接口地址和默认模型）：`zhipu`（默认）/ `zai` / `deepseek` / `openai` / `anthropic` / `openrouter`，用 `NANOPI_PROVIDER` 或配置文件的 `provider` 字段选择。
 
 可选环境变量：
 
-- `NANOPI_MODEL`：模型名
-- `NANOPI_BASE_URL`：OpenAI 兼容接口地址，默认 `https://api.openai.com/v1`
+- `NANOPI_PROVIDER`：provider 预设名
+- `NANOPI_MODEL`：模型名（覆盖预设默认值）
+- `NANOPI_BASE_URL`：OpenAI 兼容接口地址（覆盖预设，中转站用）
+
+会话内命令：`/help` `/clear` `/new` `/model` `/exit`；`Ctrl+C` 中断当前回合，连按两次或空闲时按下退出。
 
 线上 trace 是预先生成的静态数据，浏览网站不会发起模型请求。
 

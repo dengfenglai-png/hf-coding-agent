@@ -1,7 +1,7 @@
 // test/llm.test.ts
 // 测试 llm 模块的核心功能：SSE 解析、消息构建、格式转换。
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { stream, buildAssistantMessage, buildToolResultMessage, contextToOpenAIMessages, type Model } from '../src/llm.js'
+import { stream, buildAssistantMessage, buildToolResultMessages, contextToOpenAIMessages, isRetryableStatus, isNonRetryableError, retryableFetch, type Model } from '../src/llm.js'
 
 // mock fetch，用 JSON.stringify 构造 SSE 数据（避免手写转义）
 function mockSSE(chunks: object[]): ReadableStream<Uint8Array> {
@@ -68,11 +68,10 @@ describe('buildAssistantMessage', () => {
   })
 })
 
-describe('buildToolResultMessage', () => {
-  it('把 tool 执行结果打包成 user message', () => {
-    const msg = buildToolResultMessage([{ tool_use_id: 't1', content: 'hello' }])
-    expect(msg.role).toBe('user')
-    expect(msg.content).toEqual([{ type: 'tool_result', tool_use_id: 't1', content: 'hello' }])
+describe('buildToolResultMessages', () => {
+  it('把 tool 执行结果打包成 tool 消息数组', () => {
+    const msgs = buildToolResultMessages([{ tool_use_id: 't1', content: 'hello' }])
+    expect(msgs).toEqual([{ role: 'tool', tool_use_id: 't1', content: 'hello' }])
   })
 })
 
@@ -104,9 +103,9 @@ describe('contextToOpenAIMessages', () => {
     })
   })
 
-  it('tool_result 转成 role:tool 消息', () => {
+  it('tool 消息转成 role:tool', () => {
     const result = contextToOpenAIMessages({
-      messages: [{ role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'file content' }] }],
+      messages: [{ role: 'tool', tool_use_id: 't1', content: 'file content' }],
     })
     expect(result[0]).toEqual({ role: 'tool', tool_call_id: 't1', content: 'file content' })
   })
@@ -127,5 +126,75 @@ describe('contextToOpenAIMessages', () => {
     // content 必须非 null（空串），且不带 tool_calls —— 满足 OpenAI "content or tool_calls must be set"
     expect(msg.content).toBe('')
     expect(msg.tool_calls).toBeUndefined()
+  })
+})
+
+describe('isRetryableStatus', () => {
+  it('429 / 5xx → true', () => {
+    expect(isRetryableStatus(429)).toBe(true)
+    expect(isRetryableStatus(500)).toBe(true)
+    expect(isRetryableStatus(503)).toBe(true)
+  })
+
+  it('200 / 400 / 401 → false', () => {
+    expect(isRetryableStatus(200)).toBe(false)
+    expect(isRetryableStatus(400)).toBe(false)
+    expect(isRetryableStatus(401)).toBe(false)
+  })
+})
+
+describe('isNonRetryableError', () => {
+  it('配额/账单消息 → true', () => {
+    expect(isNonRetryableError('insufficient_quota')).toBe(true)
+    expect(isNonRetryableError('quota exceeded')).toBe(true)
+    expect(isNonRetryableError('billing error')).toBe(true)
+    expect(isNonRetryableError('余额不足或无可用资源包,请充值。')).toBe(true)  // 智谱 1113
+  })
+
+  it('限流/其他 → false', () => {
+    expect(isNonRetryableError('rate limit')).toBe(false)
+    expect(isNonRetryableError('internal error')).toBe(false)
+  })
+})
+
+describe('retryableFetch', () => {
+  it('网络错误 → 重试后成功', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error('network error'))
+      .mockResolvedValueOnce(new Response('ok', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const response = await retryableFetch('http://x', {}, { maxRetries: 3, baseDelayMs: 1 })
+    expect(response.status).toBe(200)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('429 限流 → 重试后成功', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('rate limit', { status: 429 }))
+      .mockResolvedValueOnce(new Response('ok', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const response = await retryableFetch('http://x', {}, { maxRetries: 3, baseDelayMs: 1 })
+    expect(response.status).toBe(200)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('配额错误（429）→ 不重试', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('insufficient_quota', { status: 429 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const response = await retryableFetch('http://x', {}, { maxRetries: 3, baseDelayMs: 1 })
+    expect(response.status).toBe(429)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('400 → 不重试', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('bad request', { status: 400 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const response = await retryableFetch('http://x', {}, { maxRetries: 3, baseDelayMs: 1 })
+    expect(response.status).toBe(400)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })

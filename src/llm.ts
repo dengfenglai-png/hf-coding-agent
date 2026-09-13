@@ -10,23 +10,30 @@ export type Model = {
   model: string          // 如 "gpt-4o" 或 "glm-5.2"
   baseUrl?: string       // 默认 https://api.openai.com/v1
   maxTokens?: number     // 不设则由 API 决定默认值（cli.ts 设为 4096）
+  contextWindow?: number // 模型上下文窗口 token 数，默认 128K（见 context-management.ts）
+  retry?: RetrySettings  // 重试配置（参考 pi 的 RetrySettings）
+}
+
+/** 重试配置：有界重试 + 指数退避（参考 pi 的 RetrySettings） */
+export type RetrySettings = {
+  enabled?: boolean     // 默认 true
+  maxRetries?: number   // 默认 3
+  baseDelayMs?: number  // 默认 2000（退避：2s, 4s, 8s）
 }
 
 /**
  * content block：消息内容的结构化单元。
- * 注意：tool_result 放在 ContentBlock 里再塞进 user message，
- * pi 里它是独立的 ToolResultMessage 类型，nanopi 简化为统一结构。
+ * tool_result 不是 block，而是独立的 tool 消息（对齐 pi 的 ToolResultMessage）。
  */
 export type ContentBlock =
   | { type: 'text'; text: string }
   | { type: 'tool_use'; id: string; name: string; input: unknown }
-  | { type: 'tool_result'; tool_use_id: string; content: string }
 
-/** 消息：user / assistant 共用同一结构 */
-export type Message = {
-  role: 'user' | 'assistant'
-  content: string | ContentBlock[]
-}
+/** 消息：user / assistant 用 ContentBlock，tool 结果是独立的 tool 消息 */
+export type Message =
+  | { role: 'user'; content: string | ContentBlock[] }
+  | { role: 'assistant'; content: string | ContentBlock[] }
+  | { role: 'tool'; tool_use_id: string; content: string }
 
 /** Context：纯 JSON，可 stringify 落盘 */
 export type Context = {
@@ -59,6 +66,11 @@ export function contextToOpenAIMessages(context: Context): object[] {
   if (context.systemPrompt) messages.push({ role: 'system', content: context.systemPrompt })
 
   for (const msg of context.messages) {
+    if (msg.role === 'tool') {
+      messages.push({ role: 'tool', tool_call_id: msg.tool_use_id, content: msg.content })
+      continue
+    }
+
     if (typeof msg.content === 'string') {
       messages.push({ role: msg.role, content: msg.content })
       continue
@@ -79,17 +91,78 @@ export function contextToOpenAIMessages(context: Context): object[] {
       const content = text || (toolCalls.length ? null : '')
       messages.push({ role: 'assistant', content, tool_calls: toolCalls.length ? toolCalls : undefined })
     } else {
-      // user message 里的 tool_result block → OpenAI 要求独立的 role:tool 消息
+      // user 消息的 text block → user 消息
       for (const b of blocks) {
-        if (b.type === 'tool_result') {
-          messages.push({ role: 'tool', tool_call_id: b.tool_use_id, content: b.content })
-        } else if (b.type === 'text') {
+        if (b.type === 'text') {
           messages.push({ role: 'user', content: b.text })
         }
       }
     }
   }
   return messages
+}
+
+// ===== 重试退避 =====
+
+/** 配额/账单错误：即使返回 429，也是配额耗尽而非限流，重试无用 */
+const NON_RETRYABLE_ERROR_PATTERNS = [
+  /insufficient_quota/i,
+  /quota exceeded/i,
+  /out of budget/i,
+  /billing/i,
+  /usage limit/i,
+  /余额不足/,       // 智谱 1113
+  /无可用资源包/,
+  /请充值/,
+]
+
+/** 可重试的 HTTP 状态码：429 限流 + 5xx 服务端错误 */
+export function isRetryableStatus(status: number): boolean {
+  return status === 429 || status >= 500
+}
+
+/** 判断错误消息是否为配额/账单错误（fail fast，不重试） */
+export function isNonRetryableError(text: string): boolean {
+  return NON_RETRYABLE_ERROR_PATTERNS.some(re => re.test(text))
+}
+
+/** 可中断的 sleep：abort 时 reject，用于退避等待 */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(new Error('aborted')); return }
+    const timer = setTimeout(resolve, ms)
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer)
+      reject(new Error('aborted'))
+    }, { once: true })
+  })
+}
+
+/** 带退避重试的 fetch：429/5xx/网络错误重试，配额错误 fail fast */
+export async function retryableFetch(
+  url: string,
+  init: RequestInit,
+  retry: RetrySettings | undefined,
+  signal?: AbortSignal,
+): Promise<Response> {
+  const maxRetries = retry?.enabled === false ? 0 : (retry?.maxRetries ?? 3)
+  const baseDelayMs = retry?.baseDelayMs ?? 2000
+  let attempt = 0
+  for (;;) {
+    try {
+      const response = await fetch(url, init)
+      if (!isRetryableStatus(response.status)) return response
+      const text = await response.clone().text()
+      if (isNonRetryableError(text)) return response
+      if (attempt >= maxRetries) return response
+      attempt++
+      await sleep(baseDelayMs * 2 ** (attempt - 1), signal)
+    } catch (e) {
+      if (signal?.aborted || attempt >= maxRetries) throw e
+      attempt++
+      await sleep(baseDelayMs * 2 ** (attempt - 1), signal)
+    }
+  }
 }
 
 /** OpenAI SSE chunk 的最小类型 */
@@ -181,15 +254,15 @@ export async function* stream(
     }))
   }
 
-  // 发请求
+  // 发请求（带重试退避）
   let response: Response
   try {
-    response = await fetch(url, {
+    response = await retryableFetch(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${model.apiKey}` },
       body: JSON.stringify(body),
       signal: opts.signal,
-    })
+    }, model.retry, opts.signal)
   } catch (e) {
     if (opts.signal?.aborted) { yield { type: 'done', stopReason: 'aborted' }; return }
     yield { type: 'error', error: e as Error }; return
@@ -253,16 +326,13 @@ export function buildAssistantMessage(
   return { role: 'assistant', content }
 }
 
-/** 构造 tool_result user message */
-export function buildToolResultMessage(
+/** 构造 tool 结果消息（每个结果一条独立的 tool 消息） */
+export function buildToolResultMessages(
   results: { tool_use_id: string; content: string }[],
-): Message {
-  return {
-    role: 'user',
-    content: results.map(r => ({
-      type: 'tool_result' as const,
-      tool_use_id: r.tool_use_id,
-      content: r.content,
-    })),
-  }
+): Message[] {
+  return results.map(r => ({
+    role: 'tool',
+    tool_use_id: r.tool_use_id,
+    content: r.content,
+  }))
 }

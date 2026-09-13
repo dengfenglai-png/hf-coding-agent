@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Harness 工程设计 — 调研与实践汇报</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@500;600;700&family=Noto+Sans+SC:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+     Bold Signal · 22 页 · 四幕（调研→实践→深读→心得）· 浓缩版
+     逻辑主线：五要素轴——一个循环 · 一份预算 · 一双手 · 一个插座 · 一套制度
+     信息密度优先：双栏要点 / 密集卡 / 标注条；任何视口不滚动（clamp + 100dvh）
+     两张架构图为 HTML/CSS 原生绘制（与全 deck 风格统一）
+     ============================================================ */
+  :root {
+    --bg: #141419; --card: #1D1D24; --card2: #23232B;
+    --ink: #F4F2ED; --sub: #9C9AA3;
+    --acc: #FF5C1F; --acc2: #FFC24B; --line: #33333C;
+    --title-size: clamp(1.5rem, 3.3vw, 2.5rem);
+    --body-size: clamp(0.85rem, 1.42vw, 1.1rem);
+    --small-size: clamp(0.68rem, 0.98vw, 0.84rem);
+    --slide-padding: clamp(1rem, 3.4vw, 3.4rem);
+    --content-gap: clamp(0.45rem, 1.6vh, 1.2rem);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow-x: hidden; }
+  html { scroll-snap-type: y mandatory; scroll-behavior: smooth; }
+
+  /* ---- slide 骨架：一页 = 恰好一个视口，绝不允许内部滚动 ---- */
+  .slide {
+    width: 100vw; height: 100vh; height: 100dvh;
+    overflow: hidden; scroll-snap-align: start;
+    display: flex; flex-direction: column; position: relative;
+    background: var(--bg); color: var(--ink);
+    font-family: "Archivo", "Noto Sans SC", "PingFang SC", sans-serif;
+  }
+  .slide-content {
+    flex: 1; display: flex; flex-direction: column; justify-content: center;
+    max-height: 100%; overflow: hidden;
+    padding: var(--slide-padding);
+    padding-right: calc(var(--slide-padding) + clamp(28px, 4vw, 56px)); /* 给右侧导航点留位 */
+  }
+
+  /* ---- 顶部进度条 + 右侧导航点 ---- */
+  #progress { position: fixed; top: 0; left: 0; height: 4px; width: 0;
+    background: var(--acc); z-index: 99; transition: width .3s ease; }
+  #dots { position: fixed; right: clamp(10px, 1.6vw, 22px); top: 50%; transform: translateY(-50%);
+    display: flex; flex-direction: column; gap: 9px; z-index: 99; }
+  #dots button { width: 9px; height: 9px; border-radius: 50%; border: none; cursor: pointer;
+    background: var(--line); transition: all .25s ease; }
+  #dots button.on { background: var(--acc); transform: scale(1.5); box-shadow: 0 0 10px rgba(255,92,31,.6); }
+  #counter { position: fixed; bottom: 14px; right: clamp(14px, 2vw, 26px);
+    font-size: var(--small-size); color: var(--sub); letter-spacing: .12em; z-index: 99;
+    font-family: "Archivo", monospace; }
+
+  /* ---- 通用元素 ---- */
+  .kicker {
+    display: flex; align-items: center; gap: 12px;
+    font-size: var(--small-size); font-weight: 700; letter-spacing: .26em;
+    color: var(--acc); text-transform: uppercase;
+  }
+  .kicker::before { content: ""; width: clamp(24px, 3vw, 42px); height: 3px; background: var(--acc); flex: none; }
+  h2 { margin-top: clamp(.4rem, 1.4vh, .9rem); font-weight: 900;
+    font-size: var(--title-size); line-height: 1.15; letter-spacing: -.01em;
+    font-family: "Archivo Black", "Noto Sans SC", sans-serif; }
+  h2 em { font-style: normal; color: var(--acc); }
+
+  /* 要点行：橙色序号 + 文本（浓缩版：更紧的行距与间距） */
+  .pts { margin-top: var(--content-gap); display: flex; flex-direction: column; gap: clamp(.42rem, 1.35vh, .8rem); }
+  .pt { display: flex; gap: clamp(10px, 1.4vw, 18px); align-items: baseline; }
+  .pt .no { font-family: "Archivo Black", sans-serif; flex: none;
+    font-size: clamp(.78rem, 1.2vw, .98rem); color: var(--acc); letter-spacing: .05em; }
+  .pt p { font-size: var(--body-size); line-height: 1.55; color: var(--sub); max-width: 76ch; }
+  .pt p b { color: var(--ink); font-weight: 700; }
+  .pt p code { font-family: "Archivo", monospace; color: var(--acc2); font-size: .92em; }
+
+  /* 双栏要点：一页装 6-8 条 */
+  .cols { margin-top: var(--content-gap); display: grid; grid-template-columns: 1fr 1fr;
+    gap: clamp(.42rem, 1.35vh, .8rem) clamp(16px, 2.4vw, 30px); align-items: start; }
+
+  /* 强调横幅（本质句） */
+  .banner {
+    margin-top: var(--content-gap);
+    background: var(--card); border-left: 5px solid var(--acc); border-radius: 10px;
+    padding: clamp(12px, 2vh, 20px) clamp(16px, 2.4vw, 28px);
+    font-size: clamp(.95rem, 1.85vw, 1.35rem); font-weight: 700; line-height: 1.45;
+    max-width: min(92%, 1020px);
+  }
+  .banner em { font-style: normal; color: var(--acc2); }
+  .banner small { display: block; margin-top: 5px; font-size: clamp(.68rem, .95vw, .8rem);
+    font-weight: 500; color: var(--sub); letter-spacing: .06em; }
+
+  /* 密集卡（2×2 概念卡） */
+  .dgrid { margin-top: var(--content-gap); display: grid; grid-template-columns: 1fr 1fr;
+    gap: clamp(8px, 1.4vw, 14px); }
+  .dc { background: var(--card); border-radius: 10px; padding: clamp(10px, 1.8vh, 16px) clamp(13px, 1.5vw, 20px);
+    border-top: 3px solid var(--acc); }
+  .dc .dt { font-weight: 900; font-size: clamp(.92rem, 1.45vw, 1.1rem);
+    font-family: "Archivo Black", "Noto Sans SC", sans-serif; }
+  .dc .dt span { color: var(--acc); font-size: .78em; margin-right: 7px; }
+  .dc p { margin-top: 5px; font-size: clamp(.74rem, 1.12vw, .92rem); color: var(--sub); line-height: 1.58; }
+  .dc p b { color: var(--ink); }
+  .dc p code { font-family: "Archivo", monospace; color: var(--acc2); font-size: .92em; }
+
+  /* 三段流程卡（steps） */
+  .steps { margin-top: var(--content-gap); display: flex; gap: clamp(9px, 1.5vw, 16px); flex-wrap: wrap; }
+  .step { flex: 1 1 200px; background: var(--card); border-radius: 10px;
+    padding: clamp(11px, 1.9vh, 18px) clamp(13px, 1.5vw, 20px);
+    border-top: 3px solid var(--acc); }
+  .step .sn { font-family: "Archivo Black", sans-serif; color: var(--acc); font-size: var(--small-size); letter-spacing: .15em; }
+  .step .stt { margin: 5px 0 6px; font-weight: 700; font-size: clamp(.92rem, 1.45vw, 1.1rem); }
+  .step p { font-size: clamp(.7rem, 1.05vw, .88rem); color: var(--sub); line-height: 1.55; }
+  .step p b { color: var(--ink); }
+  .step p .lab { color: var(--acc2); font-weight: 700; }
+
+  /* 底部标注条：横向 chips */
+  .strip { margin-top: var(--content-gap); display: flex; flex-wrap: wrap; gap: 7px; }
+  .strip .sc { background: var(--card2); border: 1px solid var(--line); border-radius: 8px;
+    padding: 5px 11px; font-size: clamp(.66rem, .98vw, .8rem); color: var(--sub); line-height: 1.45; }
+  .strip .sc b { color: var(--acc2); }
+  .strip .sc.hot { border-color: rgba(255,92,31,.4); } .strip .sc.hot b { color: var(--acc); }
+
+  /* ---- 四幕地图卡片 ---- */
+  .acts { margin-top: var(--content-gap); display: grid; grid-template-columns: 1fr 1fr;
+    gap: clamp(8px, 1.4vw, 14px); }
+  .act { background: var(--card); border-radius: 12px; padding: clamp(10px, 1.9vh, 18px) clamp(13px, 1.6vw, 20px);
+    border-top: 3px solid var(--acc); }
+  .act .an { font-family: "Archivo Black", sans-serif; color: var(--acc);
+    font-size: clamp(.75rem, 1.1vw, .9rem); letter-spacing: .18em; }
+  .act .rng { float: right; color: var(--acc2); font-size: clamp(.66rem, .95vw, .8rem);
+    font-family: "Archivo", monospace; letter-spacing: .08em; }
+  .act .att { margin-top: 5px; font-weight: 900; font-size: clamp(.98rem, 1.6vw, 1.22rem);
+    font-family: "Archivo Black", "Noto Sans SC", sans-serif; }
+  .act p { margin-top: 5px; font-size: clamp(.7rem, 1.05vw, .86rem); color: var(--sub); line-height: 1.55; }
+  .act p b { color: var(--ink); }
+
+  /* ---- 学术脉络时间线 ---- */
+  .tl { margin-top: var(--content-gap); display: flex; flex-direction: column;
+    gap: clamp(.4rem, 1.3vh, .8rem); }
+  .tli { display: grid; grid-template-columns: clamp(60px, 7.4vw, 90px) 1fr; gap: clamp(9px, 1.4vw, 16px); align-items: stretch; }
+  .tli .yr { font-family: "Archivo Black", sans-serif; color: var(--acc);
+    font-size: clamp(.95rem, 1.75vw, 1.3rem); letter-spacing: .02em; padding-top: clamp(5px, 1vh, 9px); }
+  .tli .tbox { background: var(--card); border-left: 3px solid var(--acc); border-radius: 0 10px 10px 0;
+    padding: clamp(7px, 1.4vh, 12px) clamp(13px, 1.6vw, 20px); }
+  .tli .tti { font-weight: 700; font-size: clamp(.9rem, 1.4vw, 1.08rem); }
+  .tli .tti span { color: var(--acc2); font-size: .8em; font-weight: 600; margin-left: 8px; }
+  .tli p { margin-top: 3px; font-size: clamp(.74rem, 1.12vw, .92rem); color: var(--sub); line-height: 1.55; }
+  .tli p b { color: var(--ink); }
+
+  /* ---- 架构图（HTML 原生 · 图①）---- */
+  .arch { margin-top: clamp(.35rem, 1.1vh, .8rem); display: flex; flex-direction: column;
+    gap: clamp(4px, .9vh, 9px); }
+  .lay { display: grid; grid-template-columns: clamp(28px, 3.2vw, 42px) clamp(88px, 10.5vw, 146px) 1fr;
+    gap: clamp(7px, 1.3vw, 15px); align-items: center;
+    background: var(--card); border-radius: 9px;
+    padding: clamp(5px, 1.1vh, 10px) clamp(9px, 1.3vw, 15px); border-left: 4px solid var(--acc); }
+  .lay.core { background: var(--card2); border-left-color: var(--acc2); outline: 1px solid rgba(255,194,75,.35); }
+  .lay .ln { font-family: "Archivo Black", sans-serif; color: var(--acc);
+    font-size: clamp(.82rem, 1.3vw, 1.05rem); text-align: center; }
+  .lay.core .ln { color: var(--acc2); }
+  .lay .lname { font-weight: 700; font-size: clamp(.8rem, 1.25vw, 1rem); line-height: 1.3; }
+  .lay .lnote { font-size: clamp(.6rem, .92vw, .74rem); color: var(--sub); line-height: 1.42; margin-top: 2px; }
+  .lay .lmods { display: flex; flex-wrap: wrap; gap: 4px 5px; align-items: center; }
+  .mod { background: #2A2A33; border-radius: 6px; padding: 2px 8px;
+    font-size: clamp(.6rem, .92vw, .76rem); color: var(--ink); white-space: nowrap; }
+  .mod.hot { background: rgba(255,92,31,.14); color: #FFB48E; border: 1px solid rgba(255,92,31,.38); }
+  .mod.gold { background: rgba(255,194,75,.12); color: var(--acc2); border: 1px solid rgba(255,194,75,.35); }
+
+  /* ---- Agent Loop 生命周期图（HTML 原生 · 图②）---- */
+  .loopwrap { margin-top: clamp(.35rem, 1vh, .75rem); display: grid;
+    grid-template-columns: 1.02fr 1fr; gap: clamp(9px, 1.7vw, 20px); align-items: start; }
+  .lcol { display: flex; flex-direction: column; }
+  .lnode { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: clamp(5px, 1.1vh, 10px) clamp(11px, 1.3vw, 16px);
+    display: flex; gap: 9px; align-items: baseline; }
+  .lnode .lt { font-weight: 700; font-size: clamp(.76rem, 1.2vw, .95rem); flex: none; }
+  .lnode p { font-size: clamp(.62rem, .96vw, .78rem); color: var(--sub); line-height: 1.48; }
+  .lnode p code { font-family: "Archivo", monospace; color: var(--acc2); font-size: .92em; }
+  .larrow { text-align: center; color: var(--acc); font-size: clamp(.68rem, .98vw, .82rem);
+    line-height: 1.1; margin: 2px 0; font-weight: 700; }
+  .larrow span { color: var(--sub); font-weight: 500; margin-left: 6px; font-size: .86em; }
+  .rcol { display: flex; flex-direction: column; gap: clamp(5px, 1.1vh, 9px); }
+  .rcard { background: var(--card); border-radius: 10px; padding: clamp(7px, 1.4vh, 12px) clamp(11px, 1.4vw, 16px); }
+  .rcard .rt { font-weight: 700; font-size: clamp(.76rem, 1.2vw, .95rem); margin-bottom: 3px; }
+  .rcard.tool { border: 1px solid rgba(255,194,75,.4); }
+  .rcard.tool .rt { color: var(--acc2); }
+  .rcard.compact { border: 1px solid rgba(255,92,31,.4); }
+  .rcard.compact .rt { color: var(--acc); }
+  .rcard.stop { border: 1px solid var(--line); }
+  .rcard.stop .rt { color: var(--ink); }
+  .rcard p { font-size: clamp(.62rem, .96vw, .78rem); color: var(--sub); line-height: 1.52; }
+  .rcard p b { color: var(--ink); }
+  .rcard p code { font-family: "Archivo", monospace; color: var(--acc2); font-size: .92em; }
+
+  /* ---- 横向对照表 ---- */
+  .cmp { margin-top: var(--content-gap); width: 100%; border-collapse: collapse;
+    font-size: clamp(.62rem, .96vw, .78rem); }
+  .cmp th, .cmp td { border: 1px solid var(--line); padding: clamp(4px, .9vh, 8px) clamp(7px, .95vw, 11px);
+    text-align: left; vertical-align: top; line-height: 1.48; color: var(--sub); }
+  .cmp thead th { background: var(--card2); color: var(--acc2); font-weight: 700; }
+  .cmp thead th.hl { color: var(--acc); }
+  .cmp td.k { color: var(--ink); font-weight: 700; background: rgba(255,255,255,.025); white-space: nowrap; }
+  .cmp td b { color: var(--ink); }
+
+  /* ---- 参考文献 ---- */
+  .refs { margin-top: var(--content-gap); columns: 2; column-gap: clamp(16px, 2.5vw, 34px); }
+  .refi { break-inside: avoid; display: flex; gap: 9px; margin-bottom: clamp(5px, 1.3vh, 11px); }
+  .refi .rn { font-family: "Archivo Black", sans-serif; color: var(--acc);
+    font-size: clamp(.7rem, 1vw, .84rem); flex: none; }
+  .refi p { font-size: clamp(.64rem, .96vw, .8rem); color: var(--sub); line-height: 1.5; }
+  .refi p b { color: var(--ink); }
+  .refi p em { font-style: normal; color: var(--acc2); }
+
+  /* ---- 封面 / 结尾的右侧橙色块 ---- */
+  .block { position: absolute; right: 0; top: 0; bottom: 0; width: clamp(90px, 18vw, 260px);
+    background: var(--acc); display: flex; align-items: center; justify-content: center; }
+  .block .word { writing-mode: vertical-rl; font-family: "Archivo Black", "Noto Sans SC", sans-serif;
+    font-size: clamp(.9rem, 2vw, 1.9rem); color: var(--bg); letter-spacing: .2em; font-weight: 900; }
+  .block .num { position: absolute; bottom: clamp(12px, 2.6vh, 30px); right: clamp(12px, 2vw, 24px);
+    font-family: "Archivo Black", sans-serif; font-size: clamp(2rem, 5.5vw, 4.6rem);
+    color: rgba(20,20,25,.22); line-height: 1; }
+  .cover-title { font-family: "Archivo Black", "Noto Sans SC", sans-serif; font-weight: 900;
+    font-size: clamp(2.2rem, 6.4vw, 5.4rem); line-height: 1.06; letter-spacing: -.01em;
+    margin-top: clamp(.6rem, 2vh, 1.2rem); }
+  .cover-title em { font-style: normal; color: var(--acc); }
+  .cover-sub { margin-top: clamp(.7rem, 2.2vh, 1.3rem); color: var(--sub);
+    font-size: clamp(.9rem, 1.6vw, 1.2rem); line-height: 1.75; }
+  .cover-sub b { color: var(--ink); }
+  .ring { position: absolute; right: clamp(70px, 20vw, 300px); bottom: -80px;
+    width: 240px; height: 240px; border-radius: 50%; border: 26px solid var(--card); }
+
+  /* ---- 入场动画：IO 给可视 slide 加 .visible 后触发 ---- */
+  .reveal { opacity: 0; transform: translateY(22px); }
+  .slide.visible .reveal { animation: rise .6s cubic-bezier(.2,.8,.25,1) forwards; }
+  .slide.visible .r1 { animation-delay: .05s; } .slide.visible .r2 { animation-delay: .17s; }
+  .slide.visible .r3 { animation-delay: .29s; } .slide.visible .r4 { animation-delay: .41s; }
+  .slide.visible .r5 { animation-delay: .53s; }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+
+  /* ---- 响应式断点（skill 强制：700/600/500 高度 + 600 宽度） ---- */
+  @media (max-height: 700px) {
+    :root { --slide-padding: clamp(.7rem, 2.8vw, 1.9rem); --title-size: clamp(1.3rem, 3vw, 2rem); }
+  }
+  @media (max-height: 600px) {
+    :root { --slide-padding: clamp(.5rem, 2.3vw, 1.4rem); --body-size: clamp(.74rem, 1.15vw, .9rem); }
+    #dots { display: none; }
+    .refs { columns: 1; }
+  }
+  @media (max-height: 500px) {
+    :root { --title-size: clamp(1rem, 2.8vw, 1.4rem); --body-size: clamp(.64rem, .95vw, .8rem); }
+    #dots, #counter { display: none; }
+  }
+  @media (max-width: 600px) {
+    .steps, .dgrid, .acts { grid-template-columns: 1fr; }
+    .acts { display: flex; flex-direction: column; }
+    .cols { grid-template-columns: 1fr; }
+    .loopwrap { grid-template-columns: 1fr; }
+    .block { display: none; }
+    .pt p { max-width: 100%; }
+    .refs { columns: 1; }
+    .lay { grid-template-columns: 28px 1fr; }
+    .lay .lmods { grid-column: 1 / -1; }
+  }
+  /* 尊重减少动态偏好 */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .2s !important; }
+    html { scroll-behavior: auto; }
+  }
+  /* 打印：一页一 slide */
+  @media print {
+    #progress, #dots, #counter { display: none; }
+    .slide { page-break-after: always; }
+    .reveal { opacity: 1; transform: none; }
+  }
+  /* 截图模式（?only=N）：动画全开到终态，隐藏导航件 */
+  html.capture .reveal { opacity: 1 !important; transform: none !important; animation: none !important; }
+  html.capture #progress, html.capture #dots, html.capture #counter { display: none; }
+</style>
+</head>
+<body>
+
+<div id="progress"></div>
+<aside id="dots" aria-label="幻灯片导航"></aside>
+<div id="counter">01 / 22</div>
+
+<!-- ============ 01 封面 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Survey &amp; Build Notes · 2026</div>
+    <h1 class="cover-title reveal r2">Agent Harness<br><em>工程设计</em></h1>
+    <div class="cover-sub reveal r3"><b>调研业界设计共识 × 从零手撕验证 × 生产级源码深读</b><br>
+      基于 pi-from-scratch 学习项目、答疑日志，与 12 篇论文 / 工程报告</div>
+    <div class="strip reveal r4">
+      <span class="sc"><b>一个循环</b> agent loop</span>
+      <span class="sc"><b>一份预算</b> context</span>
+      <span class="sc"><b>一双手</b> tools</span>
+      <span class="sc"><b>一个插座</b> MCP + Skills</span>
+      <span class="sc"><b>一套制度</b> log · cache · 护栏</span>
+    </div>
+  </div>
+  <div class="ring"></div>
+  <div class="block reveal r5"><div class="word">SURVEY · BUILD</div><div class="num">22</div></div>
+</section>
+
+<!-- ============ 02 叙事地图 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Roadmap · 汇报结构</div>
+    <h2 class="reveal r2">四幕 × <em>五要素轴</em></h2>
+    <div class="pts"><div class="pt reveal r3"><p>一条主线：<b>文献说「应然」→ 手撕验证「所以然」→ 生产源码看「制度化的极致」</b>；四幕沿同一根轴——<b>循环 · 预算 · 工具 · 插座 · 制度</b>——反复对焦。</p></div></div>
+    <div class="acts reveal r4">
+      <div class="act"><div class="an">ACT 1<span class="rng">P3 – P8</span></div>
+        <div class="att">调研 · 文献的答案</div>
+        <p><b>ReAct → Voyager → SWE-agent</b> 学术脉络；Anthropic 工程指南：agent 即循环（循环）、context rot 与最小高信号集（预算）、长程三板斧、Agent Skills 三级披露（插座）。</p></div>
+      <div class="act"><div class="an">ACT 2<span class="rng">P9 – P15</span></div>
+        <div class="att">实践 · 最小可用的实现</div>
+        <p>pi-from-scratch：<b>五层架构、Loop 深拆</b>（循环）、token 预算与压缩安全（预算）、工具契约四道防线（工具）、MCP + Skills（插座）、工程地基（制度的雏形）。</p></div>
+      <div class="act"><div class="an">ACT 3<span class="rng">P16 – P18</span></div>
+        <div class="att">深读 · 生产级的制度化</div>
+        <p>deepseek-harness：<b>log 唯一权威</b>、前缀稳定性纪律、引导与执法分离——把前两幕的每个机制做成<b>可审计的制度</b>；四方横向对照定位差异。</p></div>
+      <div class="act"><div class="an">ACT 4<span class="rng">P19 – P22</span></div>
+        <div class="att">心得 · 哲学与反思</div>
+        <p><b>三条设计哲学</b>（它们其实是同一条）；调研验证了什么、读源码的正确姿势；下一步 P6 编排层；<b>12 篇参考文献</b>。</p></div>
+    </div>
+    <div class="strip reveal r5">
+      <span class="sc hot"><b>循环</b>：模型自主性的最小形态（P5 / P10）</span>
+      <span class="sc hot"><b>预算</b>：上下文是有限资源（P6 / P11–12）</span>
+      <span class="sc hot"><b>工具</b>：模型的双手与护栏（P13）</span>
+      <span class="sc hot"><b>插座</b>：能力从哪来（P14）</span>
+      <span class="sc hot"><b>制度</b>：规模化后的秩序（P16–17）</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 03 [调研] 什么是 Agent Harness ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Act 1 · 调研 — 定义与共识</div>
+    <h2 class="reveal r2">什么是 <em>Agent Harness</em></h2>
+    <div class="banner reveal r3">模型之外的一切：系统提示、工具、循环、上下文管理、安全护栏——<em>让 LLM 真正干活的工程外壳</em>。</div>
+    <div class="dgrid">
+      <div class="dc reveal r3"><div class="dt"><span>01</span>定义与边界</div>
+        <p>harness = 包住模型的<b>基础设施层</b>：system prompt、工具协议、agent loop、上下文管理、安全、持久化。模型同质化后，产品差异化集中在 harness——「<b>2025 是 agent 之年，2026 是 harness 之年</b>」（Zylos）。</p></div>
+      <div class="dc reveal r4"><div class="dt"><span>02</span>控制面视角</div>
+        <p>harness 是 AI 的 <b>control plane</b>（Medium 2026）：工具编排、验证回路、记忆、护栏都在这层。下一个瓶颈正转向<b>环境工程</b>——为 agent 重构企业 API 与系统，而不是继续卷外壳。</p></div>
+      <div class="dc reveal r4"><div class="dt"><span>03</span>工程实践视角</div>
+        <p>Augment Code 的拆解：harness 工程 = <b>约束</b>（规则文件 / 护栏）+ <b>反馈回路</b>（plan-execute-verify）+ <b>质量门禁</b>。结论一致：<b>可靠性来自验证闭环，不来自模型本身</b>。</p></div>
+      <div class="dc reveal r5"><div class="dt"><span>04</span>我的学习路径</div>
+        <p>三步走：<b>读文献建地图 → 手撕最小内核 → 精读生产源码验证动机</b>——对应后三幕。判据：能讲清「它<b>刻意不做什么</b>」，才算读懂一个 harness。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 04 [调研] 学术脉络 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Act 1 · 调研 — 学术脉络</div>
+    <h2 class="reveal r2">四步接力，<em>三个源头</em></h2>
+    <div class="tl">
+      <div class="tli reveal r3"><div class="yr">2022</div><div class="tbox">
+        <div class="tti">ReAct<span>Yao et al. · 被引 14,000+</span></div>
+        <p>推理轨迹 × 行动交错：LLM 交替产生 <b>reasoning trace</b> 与 <b>task-specific action</b>，优于纯思维链或纯行动——<b>agent loop 的思想源头</b>；今天所有 harness 的 while 循环都是它的工程化。</p></div></div>
+      <div class="tli reveal r4"><div class="yr">2023</div><div class="tbox">
+        <div class="tti">Voyager<span>Wang et al. · Minecraft agent</span></div>
+        <p><b>skill library</b>：验证过的可执行代码存成技能库，按需检索、组合复用 → 终身学习；自动课程驱动探索。<b>skills 机制的源头</b>——「技能是攒出来的，不是预装的」。</p></div></div>
+      <div class="tli reveal r4"><div class="yr">2024</div><div class="tbox">
+        <div class="tti">SWE-agent<span>NeurIPS · Princeton</span></div>
+        <p><b>Agent-Computer Interface（ACI）</b>：给模型用的接口 ≠ 复刻人类终端。两原则：<b>效率优先于熟悉度</b>；工具内建<b>护栏与反馈</b>（编辑后 lint）让 agent 自纠。当年 SWE-bench SOTA。</p></div></div>
+      <div class="tli reveal r5"><div class="yr">2024–25</div><div class="tbox">
+        <div class="tti">Anthropic 工程指南<span>Building Agents / Context Eng. / Agent Skills</span></div>
+        <p>把学术成果<b>制度化为产品工程规范</b>：agent 极简定义、上下文经营三杠杆、三级渐进披露——Act 1 后三页逐一展开。</p></div></div>
+    </div>
+    <div class="strip reveal r5">
+      <span class="sc"><b>循环</b> ← ReAct</span>
+      <span class="sc"><b>技能库</b> ← Voyager</span>
+      <span class="sc"><b>接口设计</b> ← SWE-agent</span>
+      <span class="sc hot"><b>第二幕逐一验证这三份遗产</b></span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 05 [调研] Anthropic 论断 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Act 1 · 调研 — Anthropic · Building Effective Agents · 循环</div>
+    <h2 class="reveal r2">Agent 的极简定义：<em>循环中自主用工具</em></h2>
+    <div class="banner reveal r3">"Agents … LLMs <em>autonomously using tools in a loop</em>."<small>Anthropic Engineering · 2024-12 · 与 dozens of teams 的共建经验</small></div>
+    <div class="pts">
+      <div class="pt reveal r3"><div class="no">01</div><p><b>Workflows vs Agents</b>：workflow 用代码<b>预先编排</b> LLM 步骤（确定性、可预测）；agent 让模型<b>自己决定</b>下一步（动态、可扩展）。判据：无法预先写出步骤图的场景才用 agent——<b>从简原则</b>。</p></div>
+      <div class="pt reveal r3"><div class="no">02</div><p><b>augmented LLM 是最小单元</b>：检索 + 工具 + 记忆增强的单次调用；agent = 把它放进 while 循环。复合模式都是循环之上的编排：<b>routing</b>（分流）、<b>prompt chaining</b>（串行）、<b>orchestrator-workers</b>（动态分解的默认模式）、<b>evaluator-optimizer</b>（生成-评审环）。</p></div>
+      <div class="pt reveal r4"><div class="no">03</div><p><b>反模式警告</b>：为炫技上多 agent 框架、把业务逻辑硬编码进提示词——通常<b>一个 augmented LLM 循环就够</b>；框架的抽象税常常大于收益。</p></div>
+      <div class="pt reveal r4"><div class="no">04</div><p><b>教学直译</b>：pi-from-scratch 的 <code>runAgent</code> 就是这个定义的直译——while + tool_call 分发 + 停止条件，<b>~200 行没有更多魔法</b>；第二幕 P10 逐分支拆解。</p></div>
+      <div class="pt reveal r5"><div class="no">05</div><p><b>趋势</b>：模型越强，可托付的自主度越高、人写的编排越少——"letting intelligent models act intelligently"；harness 的工作从「教模型做事」转向「给模型好环境」。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 06 [调研] Context Engineering ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Act 1 · 调研 — Anthropic · Context Engineering · 预算</div>
+    <h2 class="reveal r2">上下文是<em>有限资源</em></h2>
+    <div class="banner reveal r3">"Find the <em>smallest set of high-signal tokens</em> that maximize the likelihood of your desired outcome."</div>
+    <div class="pts">
+      <div class="pt reveal r3"><div class="no">01</div><p><b>Context rot（实证现象）</b>：needle-in-a-haystack 类研究表明 token 越多召回越差——<b>渐退不是断崖</b>。根因：transformer 的 n² 两两注意力被拉薄 + 训练分布偏短序列、长程依赖参数少。</p></div>
+      <div class="pt reveal r3"><div class="no">02</div><p><b>推论：注意力预算</b>——每个新 token 都在花预算，所以「最小 ≠ 最短」：要的是<b>信息密度</b>。这句话是整个上下文管理（压缩 / 披露 / 剪枝）的第一性根据。</p></div>
+      <div class="pt reveal r4"><div class="no">03</div><p><b>系统提示的「正确海拔」</b>：两端都是坑——过度硬编码 if-else 脆弱难维护；过度抽象含糊则没有信号。正解：<b>section 化 + 固定顺序</b>（XML/Markdown 分节），从最小提示开始按失败模式增量补。</p></div>
+      <div class="pt reveal r4"><div class="no">04</div><p><b>工具也是上下文</b>：少而正交、返回 token 高效——<b>人都分不清该用哪个工具时，模型更分不清</b>；few-shot 要精选多样正例，不要往提示里塞边界情况清单。</p></div>
+      <div class="pt reveal r5"><div class="no">05</div><p><b>Just-in-time 检索</b>：不预取全部，只留轻量标识符（路径 / 存好的查询 / 链接），运行时用工具按需加载；<b>metadata 即信号</b>（文件名、目录层级、时间戳都在暗示用途）。Claude Code 混合模式：<code>CLAUDE.md</code> 前置 + glob/grep 自主探索——<b>像人类用文件系统，而非背下全书</b>。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 07 [调研] 长程三技术 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Act 1 · 调研 — 长程任务的三个杠杆 · 预算</div>
+    <h2 class="reveal r2">超长任务的<em>三板斧</em></h2>
+    <div class="steps">
+      <div class="step reveal r3"><div class="sn">LEVER 1</div><div class="stt">Compaction 摘要重启</div>
+        <p><span class="lab">是什么：</span>临近窗口上限时摘要并重启新窗口。<br>
+        <span class="lab">代表：</span>Claude Code 保留<b>架构决策 / 未解 bug</b> + 最近 5 个文件；最轻形式 <b>tool result clearing</b>——老的工具原始输出没必要留。<br>
+        <span class="lab">适用：</span>多轮对话、需要连贯叙事。<br>
+        <span class="lab">我的对应：</span><code>compactContext</code>（P12）。</p></div>
+      <div class="step reveal r4"><div class="sn">LEVER 2</div><div class="stt">Structured Notes 结构化笔记</div>
+        <p><span class="lab">是什么：</span>agent 定期把状态写到<b>窗口外</b>，需要时读回。<br>
+        <span class="lab">代表：</span>Claude 玩宝可梦——数千步精确记账、探索地图、战后总结，<b>上下文重置后靠自己的笔记续命</b>。<br>
+        <span class="lab">适用：</span>里程碑清晰的迭代开发。<br>
+        <span class="lab">我的对应：</span><code>todo_write</code>（P13）。</p></div>
+      <div class="step reveal r5"><div class="sn">LEVER 3</div><div class="stt">Sub-agents 子代理</div>
+        <p><span class="lab">是什么：</span>主 agent 出计划，子 agent 各带<b>干净窗口</b>深挖。<br>
+        <span class="lab">代表：</span>Anthropic 多 agent 研究系统——每个子 agent 耗数万 token，回来只交 <b>1–2k token 摘要</b>，复杂研究任务大幅超越单 agent。<br>
+        <span class="lab">适用：</span>可并行的探索 / 检索。<br>
+        <span class="lab">我的对应：</span>P6 编排层（规划中）。</p></div>
+    </div>
+    <div class="strip reveal r5">
+      <span class="sc">三者不互斥：<b>压缩管叙事 · 笔记管状态 · 子代理管注意力</b></span>
+      <span class="sc hot">选型取决于任务形态（Anthropic）</span>
+      <span class="sc">第三幕会看到它们被<b>制度化</b>的样子</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 08 [调研] Agent Skills ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Act 1 · 调研 — Anthropic · Agent Skills · 插座</div>
+    <h2 class="reveal r2">Skills：<em>渐进披露</em>的技能库</h2>
+    <div class="steps">
+      <div class="step reveal r3"><div class="sn">LEVEL 1</div><div class="stt">metadata 常驻</div>
+        <p><code>SKILL.md</code> frontmatter 的 <b>name + description</b> 启动即进系统提示——只够判断「<b>何时该用</b>」，不足以指导干活。目录 = 一本书的目录页。</p></div>
+      <div class="step reveal r4"><div class="sn">LEVEL 2</div><div class="stt">正文按需加载</div>
+        <p>模型判断任务匹配后，用工具读入<b>完整指令</b>——Voyager 技能库「按需检索」的直接继承；正文进上下文，<b>不匹配就一个字不花</b>。</p></div>
+      <div class="step reveal r5"><div class="sn">LEVEL 3</div><div class="stt">附加文件再用再读</div>
+        <p>正文引用 reference.md / forms.md 等资源，<b>用到才读</b>；配合代码执行，脚本<b>不进上下文也能被运行</b> → 技能容量<b>无界</b>。</p></div>
+    </div>
+    <div class="pts">
+      <div class="pt reveal r4"><div class="no">01</div><p><b>本质是上下文管理</b>：skills 不改模型、不加连接，纯粹是「该进上下文时才进」——三级披露 = 对「最小高信号集」的工程化。2025-12 成为<b>开放标准</b>（agentskills.io），跨 20+ agent 通用。</p></div>
+      <div class="pt reveal r4"><div class="no">02</div><p><b>与 MCP 互补</b>：MCP 给<b>连接</b>（有什么工具），Skills 给<b>工作流知识</b>（怎么组合着用）；安全上只装可信来源、审计捆绑代码。</p></div>
+      <div class="pt reveal r5"><div class="no">03</div><p><b>我们的同构实现</b>：目录常驻 + <code>load_skill</code> 按需加载 <code>&lt;skill_content&gt;</code>——P14；<b>未来</b>：agent 自己写 skill（Voyager 终身学习的回归）。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 09 [实践] 全景架构（图① HTML 原生） ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Act 2 · 实践 — pi-from-scratch · 五要素落位</div>
+    <h2 class="reveal r2">全景：<em>五层与关键决策</em></h2>
+    <div class="arch reveal r3">
+      <div class="lay"><div class="ln">5</div>
+        <div><div class="lname">交互层</div><div class="lnote">极简：不做 markdown 渲染 / UI 框架</div></div>
+        <div class="lmods"><span class="mod">tui.ts</span><span class="mod">单行输入</span><span class="mod">流式输出</span><span class="mod">Ctrl+C 中断</span></div></div>
+      <div class="lay"><div class="ln">4</div>
+        <div><div class="lname">拼装层 · 唯一入口</div><div class="lnote">组合一切依赖；session 持久化逐行容错</div></div>
+        <div class="lmods"><span class="mod">cli.ts</span><span class="mod">config: env &gt; json &gt; 默认</span><span class="mod">MCP 装配</span><span class="mod">skills 目录注入</span><span class="mod">session.jsonl</span></div></div>
+      <div class="lay core"><div class="ln">3</div>
+        <div><div class="lname">核心层 ★ 项目灵魂</div><div class="lnote">不认识任何具体工具；两条红线：配对安全 + 压缩安全</div></div>
+        <div class="lmods"><span class="mod hot">agent.ts · while 循环</span><span class="mod hot">工具调度 · 并行</span><span class="mod hot">compactContext</span><span class="mod hot">token 估算 / cut point</span><span class="mod">before/afterToolCall</span><span class="mod">detectLoop</span></div></div>
+      <div class="lay"><div class="ln">2</div>
+        <div><div class="lname">LLM 适配层</div><div class="lnote">StreamFn 注入：切 provider 核心一行不改</div></div>
+        <div class="lmods"><span class="mod">llm.ts · OpenAI 兼容</span><span class="mod">anthropic.ts · 消息适配</span><span class="mod">SSE → 四事件流</span><span class="mod">retryableFetch 退避</span></div></div>
+      <div class="lay"><div class="ln">1</div>
+        <div><div class="lname">生态层 · 可插拔</div><div class="lnote">三来源工具同名去重合并；核心零依赖</div></div>
+        <div class="lmods"><span class="mod">tools.ts · 内置</span><span class="mod gold">mcp.ts · JSON-RPC</span><span class="mod gold">skills.ts · 目录 + load_skill</span><span class="mod">needsApproval / timeoutMs</span></div></div>
+    </div>
+    <div class="strip reveal r4">
+      <span class="sc"><b>贯穿机制</b>（跨层）：配对安全 · 压缩安全 · StreamFn 注入 · 目录注入</span>
+      <span class="sc hot"><b>分层原则</b>：核心不认识生态，依赖全靠参数注入</span>
+      <span class="sc"><b>取舍</b>：可读性优先于抽象，等真正需要时才抽象</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 10 [实践] Agent Loop 深拆（图② HTML 原生） ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Act 2 · 实践 — 核心机制 · 循环</div>
+    <h2 class="reveal r2">Agent Loop：<em>一次完整的生命</em></h2>
+    <div class="loopwrap">
+      <div class="lcol reveal r3">
+        <div class="lnode"><div class="lt">① 用户输入</div><p>tui prompt 进 <code>context.messages</code>（user）</p></div>
+        <div class="larrow">↓<span>每轮开始</span></div>
+        <div class="lnode"><div class="lt">② 组装请求</div><p>system + tools + messages → <code>StreamFn</code> 流式调用（重试退避兜底）</p></div>
+        <div class="larrow">↓</div>
+        <div class="lnode"><div class="lt">③ 流式解析</div><p>SSE 四事件：<code>text_delta / tool_call / done / error</code>——错误编码进事件流，<b>不抛异常</b></p></div>
+        <div class="larrow">↓</div>
+        <div class="lnode"><div class="lt">④ 分支判断</div><p><code>stop_reason</code>：tool_use → 右侧执行；否则走停止条件</p></div>
+        <div class="larrow">↓</div>
+        <div class="lnode"><div class="lt">⑤ 回填续轮</div><p>tool_result 回填（<b>必须配对</b>）→ 回到 ②，直到模型不再调工具</p></div>
+      </div>
+      <div class="rcol">
+        <div class="rcard tool reveal r4"><div class="rt">⚙ 工具执行子流程（tool_use 时）</div>
+          <p><code>beforeToolCall</code> 拦截（.env/.ssh/id_rsa）→ <code>needsApproval</code> 用户审批 → 执行（<code>withTimeout</code>：read 10s / grep 15s）→ <code>afterToolCall</code> 脱敏（sk-***）→ 结果回填。<b>同消息多 tool_call 并行执行</b>。</p></div>
+        <div class="rcard compact reveal r4"><div class="rt">▣ 压缩检查（每轮末）</div>
+          <p>tokens &gt; <b>0.8 × 窗口</b>？→ <code>compactContext</code> 摘要压缩，保留 system + 摘要 + 最近对话。<b>失败保留原文；abort 不压缩</b>（P12 红线）。</p></div>
+        <div class="rcard stop reveal r5"><div class="rt">■ 停止条件（四种出口）</div>
+          <p><code>end_turn</code> 正常收工 · <code>max_tokens</code> 截断 · <code>aborted</code> 中断——<b>补 error 结果保配对</b> · <code>error</code> 重试后仍失败；<b>detectLoop：连续 3 次同指纹强停</b>。</p></div>
+      </div>
+    </div>
+    <div class="strip reveal r5">
+      <span class="sc hot"><b>每轮不变量</b>：配对必须完整 · 估算不超预算 · 失败编码进事件流</span>
+      <span class="sc"><b>边界比循环重要</b>：四条停止路径 + 两处红线全在 ~200 行 agent.ts</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 11 [实践] 上下文管理 一 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Act 2 · 实践 — 上下文管理 一 · 预算</div>
+    <h2 class="reveal r2">Token 预算与<em>安全切点</em></h2>
+    <div class="pts">
+      <div class="pt reveal r3"><div class="no">01</div><p><b>估算</b>：<code>chars / 4</code> 近似 token（中英混合误差教学可接受）；<code>contextWindow</code> 进配置不写死——预算意识从「知道自己还剩多少」开始。</p></div>
+      <div class="pt reveal r3"><div class="no">02</div><p><b>两层防线</b>：轻度超限 → 找 cut point <b>裁剪旧轮次</b>；重度超限 → 触发<b>摘要压缩</b>（下一页）。对照文献：Anthropic 把 compaction 列为上下文工程<b>第一杠杆</b>。</p></div>
+      <div class="pt reveal r4"><div class="no">03</div><p><b>cut point 三规则</b>：必须是<b>消息边界</b>；<b>不能切断 tool_call / tool_result 配对</b>（切断 = 恢复后 API 400，session 直接不可用）；尽量按<b>完整轮次</b>（split turn）对齐，避免半截对话。</p></div>
+      <div class="pt reveal r4"><div class="no">04</div><p><b>为什么难</b>：API 只认「每个 tool_call 都有 tool_result」，而 token 计数在变、消息在流式追加——安全切点是<b>运行时计算</b>，不是静态配置。</p></div>
+      <div class="pt reveal r5"><div class="no">05</div><p><b>取舍</b>：精确 tokenizer = 依赖 + 复杂度；估算误差由 <b>0.8 阈值的提前量</b>吸收——这是教学版对「最小高信号集」的务实解，也是 deepseek 上 <b>tokenMeter</b> 的简化版。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 12 [实践] 上下文管理 二 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Act 2 · 实践 — 上下文管理 二 · 预算</div>
+    <h2 class="reveal r2">压缩的<em>安全纪律</em></h2>
+    <div class="banner reveal r3">压缩是<em>安全工程</em>，不只是摘要——失败时的行为比成功时更重要。</div>
+    <div class="pts">
+      <div class="pt reveal r3"><div class="no">01</div><p><b>流程</b>：<code>compactContext</code> 把旧消息交给 LLM 摘要成一条 summary 消息，保留 <b>system + 摘要 + 最近对话</b>，循环继续；压缩前后都做 token 复测。</p></div>
+      <div class="pt reveal r3"><div class="no">02</div><p><b>红线一：失败不替换</b>。压缩出错 → 保留原始 context。<b>空摘要比没有摘要更危险</b>——宁可用满窗口，也不要突然失忆；这是「保留原文比坏摘要安全」的保守设计。</p></div>
+      <div class="pt reveal r4"><div class="no">03</div><p><b>红线二：abort 不压缩</b>。中断时刻的上下文半新不旧，此时压缩最容易产出损坏的摘要；宁可什么都不做，把一致性留给下一次。</p></div>
+      <div class="pt reveal r4"><div class="no">04</div><p><b>文献回响（Anthropic）</b>：压缩的艺术在「<b>保什么 vs 丢什么</b>」——先最大召回再修剪精度；最安全的轻量形式是 <b>tool result clearing</b>（深层的原始工具输出没必要重看）。</p></div>
+      <div class="pt reveal r5"><div class="no">05</div><p><b>生产级长什么样（deepseek，P16）</b>：<b>头锚定</b>（失效点最晚）+ 尾部按 retainRatio 保留 + 配对边界 in-progress=0 才可切；摘要调用<b>逐字重放</b> system+tools+被压缩区——复用 KV 前缀缓存；<b>摘要 ≥ 原文则拒绝压缩</b>；超长工具结果先 prune（头 4096 + 尾 1024，中间打标记）。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 13 [实践] 工具契约与安全 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Act 2 · 实践 — 工具系统 · 工具 + 护栏</div>
+    <h2 class="reveal r2">工具契约与<em>四道防线</em></h2>
+    <div class="pts">
+      <div class="pt reveal r3"><div class="no">01</div><p><b>契约</b>：AgentTool = name + description + zod <code>inputSchema</code> + execute + <code>timeoutMs / needsApproval</code>。schema 校验失败返回<b>结构化错误</b>（哪个字段、什么类型）——模型据此<b>自我纠正</b>，这正是 SWE-agent「护栏 + 反馈」原则的最小实现。</p></div>
+      <div class="pt reveal r3"><div class="no">02</div><p><b>执行</b>：同一消息多个 tool_call <b>并行执行</b>；<code>withTimeout</code> 用 Promise.race 兜底——read 10s / grep 15s / bash 30s，不让单个工具卡死整个循环（教学版不真取消，超时替换结果为错误）。</p></div>
+      <div class="pt reveal r4"><div class="no">03</div><p><b>四道防线</b>：<code>needsApproval</code> 用户审批（rm 等危险操作，y/n）→ <code>beforeToolCall</code> 通用拦截（.env / .ssh / id_rsa 直接 block）→ <code>afterToolCall</code> 结果脱敏（sk-*** 打码）→ <code>detectLoop</code> 死循环检测（最近 3 次调用同指纹即停）。</p></div>
+      <div class="pt reveal r4"><div class="no">04</div><p><b>为什么钩子是参数不是 if-else</b>：拦截与脱敏由拼装层注入（cli.ts 传函数），agent 核心只约定调用时机——<b>策略与机制分离</b>，是第三幕「引导与执法分离」的前奏。</p></div>
+      <div class="pt reveal r5"><div class="no">05</div><p><b>todo_write 的奥义</b>：无状态<b>整表替换</b>（○ ▶ ✓ ✗）——任务进度外置到工具结果里，最新清单永远是最后一次 tool call 参数，<b>天然贴在上下文尾部、永远新鲜、零重注入</b>（文献：structured note-taking；deepseek 把这一点讲透了）。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 14 [实践] 生态扩展 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Act 2 · 实践 — 生态扩展 · 插座</div>
+    <h2 class="reveal r2">MCP 与 Skills：<em>能力从哪来</em></h2>
+    <div class="pts">
+      <div class="pt reveal r3"><div class="no">01</div><p><b>MCP（接工具）</b>：手写零依赖 JSON-RPC client——spawn 子进程 stdio 通信，<b>initialize 握手 → tools/list 发现 → tools/call 调用</b>；MCP 工具适配成普通 AgentTool（schema 直转），server 连不上<b>只警告不阻塞启动</b>。</p></div>
+      <div class="pt reveal r3"><div class="no">02</div><p><b>Skills（给知识）</b>：目录（name + description）常驻 system prompt；模型判断匹配后调 <code>load_skill</code> 加载 <code>&lt;skill_content&gt;</code> 完整指令——P8 三级披露的<b>同构实现</b>；引导语明确「目录只有摘要，未加载前不要推断指令」（<b>防幻觉</b>）。</p></div>
+      <div class="pt reveal r4"><div class="no">03</div><p><b>一次真实迭代（v1 → v2）</b>：v1 关键词匹配的三缺陷——字面匹配漏激活（「帮我看看这段代码」不含「审查」）、trigger 枚举不完、逐轮激活指令淡出。v2 改<b>模型语义路由</b>：不怕换说法、加载结果留在 messages 里<b>后续轮次免重载</b>、压缩丢了指令可重新 load（<b>自愈</b>）。</p></div>
+      <div class="pt reveal r4"><div class="no">04</div><p><b>代价与取舍</b>：激活多一次工具往返；弱模型可能漏激活 / 过度激活（关键词版是确定性的）；目录每轮占少量 token——<b>用少量常驻 token 换按需的无限容量</b>，正是渐进披露的交易结构。</p></div>
+      <div class="pt reveal r5"><div class="no">05</div><p><b>边界与未来</b>：MCP 管连接（有什么工具），Skills 管工作流（怎么组合）——与 Anthropic 定位一致；skill 还可捆绑<b>确定性脚本</b>（不进上下文直接执行），以及让 agent 自己沉淀 skill（Voyager 回归）。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 15 [实践] 工程地基 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Act 2 · 实践 — 工程地基 · 制度的雏形</div>
+    <h2 class="reveal r2">让它能被<em>信任</em>的地基</h2>
+    <div class="pts">
+      <div class="pt reveal r3"><div class="no">01</div><p><b>StreamFn 注入</b>：stream 函数作为参数传给 <code>runAgent / compactContext</code>（默认 OpenAI 兼容实现）。切 Anthropic 后端时 <b>agent 核心一行不改</b>；契约：<b>失败不 throw，编码进事件流</b>（error 事件）——上层统一处理。</p></div>
+      <div class="pt reveal r3"><div class="no">02</div><p><b>消息格式适配</b>：<code>contextToAnthropicMessages</code>——tool 结果打包成 user 消息的 tool_result block（Anthropic 无独立 tool role）、system 独立字段、max_tokens 必填、stop_reason 双向映射（tool_use / end_turn / max_tokens）。</p></div>
+      <div class="pt reveal r4"><div class="no">03</div><p><b>重试退避</b>：retryableFetch 对 429 / 5xx 指数退避——LLM API 的瞬态失败是常态不是异常；与 pi / deepseek 两个参考项目对齐。</p></div>
+      <div class="pt reveal r4"><div class="no">04</div><p><b>持久化容错</b>：session.jsonl <b>逐行解析、跳过损坏行</b>（进程崩溃可能写出半行 JSON——丢弃单行好过丢弃全部历史）；恢复时校验配对、补 error 结果。</p></div>
+      <div class="pt reveal r5"><div class="no">05</div><p><b>配置与验证</b>：优先级 env &gt; config.json &gt; 默认值，<b>密钥只走环境变量不落盘</b>；100 个单元测试全绿——skills / 上下文管理全部<b>纯函数</b>，让「手撕」可回归、可教学。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 16 [深读] log 唯一权威 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Act 3 · 深读 — deepseek-harness · 制度</div>
+    <h2 class="reveal r2">Log 唯一权威，<em>万物皆折叠</em></h2>
+    <div class="banner reveal r3">事件溯源：log 是 append-only 的唯一真相；「当前状态」全部是 fold 出来的投影——<em>没有第二份真相</em>。</div>
+    <div class="pts">
+      <div class="pt reveal r3"><div class="no">01</div><p><b>surface 投影</b>：模型看到的消息序列 = 确定性 fold。surfaceOp 只有 <b>append 与 replace</b> 两种；压缩的「删除」其实是替换投影——<b>log 永不删</b>，resume / fork / 审计全部免费；内存只放「还没取得写入资格的 pending」。</p></div>
+      <div class="pt reveal r3"><div class="no">02</div><p><b>替换的严格校验</b>：replace 带 provenance / 范围校验——tool 配对不悬空、replaceGeneration 失效派生缓存；教学版的「配对安全」在这里被<b>制度化</b>。</p></div>
+      <div class="pt reveal r4"><div class="no">03</div><p><b>压缩管线（全貌）</b>：三触发（压力 0.8×窗口 / 溢出 retry / 手动 idle）→ <b>先 prune 再重测</b>，仍超才 compact；选区<b>头锚定 + 尾部 retainRatio</b>、配对边界 in-progress=0；摘要调用逐字重放前缀<b>吃自己的 KV 缓存</b>，摘要 ≥ 原文拒绝。</p></div>
+      <div class="pt reveal r4"><div class="no">04</div><p><b>记忆也是 fold</b>：情景 = session log；整固 = compaction；声明性 = AGENTS.md 链（SHA-1 去重）；程序性 = skills 目录；跨会话 = @提及冻结快照。<b>刻意不用向量检索</b>——用「可寻址」（名字 / 路径 / @）换可信、可审计。</p></div>
+      <div class="pt reveal r5"><div class="no">05</div><p><b>为什么这是根基</b>：请求由 log 派生 → 每步请求 = 上一步前缀 + 新后缀——<b>下一页的前缀纪律正源于此</b>；一切机制（plan 状态、todo、目录）都是「往 log 写的人」或「从 log fold 的人」。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 17 [深读] 前缀纪律 + 引导执法分离 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Act 3 · 深读 — KV cache 与行为设计 · 制度</div>
+    <h2 class="reveal r2">追加优先，<em>失效最晚</em></h2>
+    <div class="pts">
+      <div class="pt reveal r3"><div class="no">01</div><p><b>前缀稳定性纪律</b>：harness 不实现缓存（缓存在 provider 侧），实现的是「<b>不许动前缀、只许追加后缀</b>」——系统提示 <b>section 化 + 固定 order</b>、工具 schema 稳定（plan 模式不装卸工具正为此）、request/header 去重。</p></div>
+      <div class="pt reveal r3"><div class="no">02</div><p><b>失效不可避免时</b>（压缩、plan 切换）：把失效点<b>推到最晚</b>（压缩头锚定），并让引发替换的调用<b>自己重放失效点之前的内容</b>——换摘要的请求复用自己的缓存。缓存失效是「算力账单」，不是内容变化。</p></div>
+      <div class="pt reveal r4"><div class="no">03</div><p><b>制度化</b>：每个包 README 必须写 <b>Model Experience</b> 三段（模型看到什么 / token 效应 / KV cache 效应），脚本强制；所有请求分四类：append-only / stable prefix / replacement / independent。<b>把纪律变成流程</b>。</p></div>
+      <div class="pt reveal r4"><div class="no">04</div><p><b>引导与执法分离</b>：模型行为靠 <b>context 内容引导</b>（提示 section / 工具描述 / 消息）；安全靠 sandbox / approval <b>独立执法</b>，互不读写。运行时是 context 的策展人，不是监工——<b>刻意不做「计划执行监督器」</b>。</p></div>
+      <div class="pt reveal r5"><div class="no">05</div><p><b>四阶段接力</b>（plan 案例）：规划期常驻 section → 交接——计划全文 + 执行指令都是<b>模型自己写的</b> tool 参数 / 结果 → 执行期靠历史（前缀一字不变）→ 长程被压缩稀释后靠 todo_write 兜底。<b>引导即上下文本身</b>。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 18 [深读] 四方对照 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Act 3 · 深读 — 横向对照</div>
+    <h2 class="reveal r2">同一个问题，<em>四种答案</em></h2>
+    <table class="cmp reveal r3">
+      <thead><tr><th>维度</th><th>Claude Code</th><th>pi</th><th>deepseek-harness</th><th class="hl">pi-from-scratch</th></tr></thead>
+      <tbody>
+        <tr><td class="k">核心循环</td><td>messages 循环：工具 + end_turn</td><td>agent runtime：工具调用 + 状态管理</td><td>turn/step 生命周期；<b>乱序执行、顺序提交</b></td><td><b>while 循环 ~200 行</b>，教学直译</td></tr>
+        <tr><td class="k">上下文压缩</td><td>/compact 摘要 + 最近 5 文件</td><td>token-meter + 压缩</td><td>prune→compact：头锚定、缓存复用、摘要过长即拒</td><td>阈值 0.8 摘要压缩；<b>失败不替换</b></td></tr>
+        <tr><td class="k">Skills</td><td>SKILL.md <b>三级披露</b>（开放标准）</td><td>纯指令 + read 工具渐进披露</td><td>目录 digest 去重 + 三阶段 + 压缩后<b>自愈重发</b></td><td>目录 + load_skill <b>同构实现</b></td></tr>
+        <tr><td class="k">行为引导</td><td>CLAUDE.md + 工具描述</td><td>AGENTS.md 链</td><td>section 化提示 + 两阶段 plan（log 事件）</td><td>SYSTEM_PROMPT + skill 目录</td></tr>
+        <tr><td class="k">安全</td><td>权限模式 + sandbox</td><td>approval 钩子</td><td>sandbox / approval <b>独立执法</b>（引导执法分离）</td><td>审批 + 前后钩子 + 防循环</td></tr>
+        <tr><td class="k">会话与真相</td><td>session 恢复</td><td>session manager</td><td><b>log 唯一权威</b> + surface fold</td><td>session.jsonl 逐行容错</td></tr>
+        <tr><td class="k">能力扩展</td><td>MCP + Skills + API</td><td>MCP + 扩展系统</td><td>capability seams（插件化包）</td><td>MCP + skills + StreamFn</td></tr>
+      </tbody>
+    </table>
+    <div class="strip reveal r4">
+      <span class="sc">四者共享同一套词汇：<b>循环 · 预算 · 披露 · 护栏 · 真相</b></span>
+      <span class="sc hot">差别只在<b>工程化深度</b>，不在概念数量</span>
+      <span class="sc">教学版的价值：把每个概念<b>压到可读的最小实现</b></span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 19 [心得] 三条哲学 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Act 4 · 心得 — 设计哲学</div>
+    <h2 class="reveal r2">贯穿全部答疑的<em>三条哲学</em></h2>
+    <div class="steps">
+      <div class="step reveal r3"><div class="sn">哲学 1</div><div class="stt">Log 唯一权威</div>
+        <p><span class="lab">陈述：</span>真相只有一份，视图都是 fold；内存只放「还没取得写入资格的 pending」。<br>
+        <span class="lab">机制：</span>skills 目录、plan 状态、todo、记忆——全是「往 log 写的人」或「从 log fold 的人」。<br>
+        <span class="lab">影子：</span>session.jsonl 逐行容错；skill 加载结果留在对话里，不另设状态。</p></div>
+      <div class="step reveal r4"><div class="sn">哲学 2</div><div class="stt">追加优先，失效最晚</div>
+        <p><span class="lab">陈述：</span>能 append 就不 rewrite；必须动前缀时，让引发替换的调用自己吃回缓存。<br>
+        <span class="lab">机制：</span>目录「追加式替换」、request/header 去重、压缩头锚定 + 摘要重放。<br>
+        <span class="lab">影子：</span>估算只增不改写历史；压缩失败保留原文（宁可不动）。</p></div>
+      <div class="step reveal r5"><div class="sn">哲学 3</div><div class="stt">引导与执法分离</div>
+        <p><span class="lab">陈述：</span>判断力留在模型（它是路由器），机制做成工具（稳定、可记账）；安全独立执法。<br>
+        <span class="lab">机制：</span>一切能力皆 tool——schema / 信封 / 日志 / 调度免费继承；sandbox / approval 不读引导。<br>
+        <span class="lab">影子：</span>load_skill 是工具不是 if-else；审批与提示词互不越界。</p></div>
+    </div>
+    <div class="strip reveal r5">
+      <span class="sc hot"><b>三条其实是同一条</b>：把「状态」和「行为」都赶到可审计的机制里，模型只负责判断</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 20 [心得] 调研验证了什么 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Act 4 · 心得 — 学习心得</div>
+    <h2 class="reveal r2">手撕一圈，<em>验证了什么</em></h2>
+    <div class="pts">
+      <div class="pt reveal r3"><div class="no">01</div><p><b>文献的「应然」基本都验到了</b>：agent = loop（runAgent 直译）；渐进披露有效（skills v2 明显优于关键词 v1）；工具护栏换来自纠（schema 错误回喂模型）；压缩是安全工程而不只是摘要（两条红线的由来）。</p></div>
+      <div class="pt reveal r3"><div class="no">02</div><p><b>最有价值的意外</b>：文献一句带过的话，手撕时才懂分量——「tool result clearing 最轻」背后是<b>配对红线</b>；「smallest high-signal set」背后是 <b>cut point 不能切配对</b>；「循环」二字背后是四条停止路径的边界工程。</p></div>
+      <div class="pt reveal r4"><div class="no">03</div><p><b>读生产源码的正确姿势</b>：设计动机藏在「它<b>刻意不做什么</b>」里——deepseek 刻意不用向量检索（可信可审计优先）、不做计划监督器（引导即上下文）、把一切做成 tool（模型是路由器，工具是手）；<b>不做什么比做了什么更诚实</b>。</p></div>
+      <div class="pt reveal r4"><div class="no">04</div><p><b>方法论沉淀</b>：先文献后代码（带着问题读源码，动机才浮现）；边讲边写（每个功能先对齐方案再动手）；答疑日志 = 把「当时为什么这么定」固化成可复习的资产。</p></div>
+      <div class="pt reveal r5"><div class="no">05</div><p><b>下一步（P6 编排层）</b>：subagent = 普通 <b>Agent + Session</b>（seam 只写编排不写引擎）；workflow 是 subagent 的上层——<b>把编排从模型脑子里搬进确定性脚本</b>（agent() / parallel() / pipeline()）；配 worktree 隔离与分屏。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 21 [心得] 参考文献 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Act 4 · 心得 — Sources</div>
+    <h2 class="reveal r2">参考<em>文献</em></h2>
+    <div class="refs reveal r3">
+      <div class="refi"><div class="rn">01</div><p><b>ReAct: Synergizing Reasoning and Acting in Language Models</b> — Yao et al., arXiv:2210.03629, 2022 · <em>agent loop 思想起源</em></p></div>
+      <div class="refi"><div class="rn">02</div><p><b>Voyager: An Open-Ended Embodied Agent with LLMs</b> — Wang et al., arXiv:2305.16291, 2023 · <em>skill library 与终身学习</em></p></div>
+      <div class="refi"><div class="rn">03</div><p><b>SWE-agent: ACIs Enable Automated Software Engineering</b> — Yang et al., NeurIPS 2024, arXiv:2405.15793 · <em>ACI 设计原则</em></p></div>
+      <div class="refi"><div class="rn">04</div><p><b>Building Effective Agents</b> — Anthropic Engineering, 2024-12 · <em>agent 定义与编排模式</em></p></div>
+      <div class="refi"><div class="rn">05</div><p><b>Effective Context Engineering for AI Agents</b> — Anthropic Engineering, 2025 · <em>context rot / 三杠杆 / JIT</em></p></div>
+      <div class="refi"><div class="rn">06</div><p><b>Equipping Agents for the Real World with Agent Skills</b> — Anthropic Engineering, 2025-10 · <em>三级渐进披露</em></p></div>
+      <div class="refi"><div class="rn">07</div><p><b>Agent Skills Specification</b> — agentskills.io 开放标准, 2025-12 · <em>跨平台技能格式</em></p></div>
+      <div class="refi"><div class="rn">08</div><p><b>Agent Harness Engineering: The Rise of the AI Control Plane</b> — Medium, 2026 · <em>control plane 与环境工程</em></p></div>
+      <div class="refi"><div class="rn">09</div><p><b>Harness Engineering for AI Coding Agents</b> — Augment Code, 2026 · <em>约束 / 反馈回路 / 质量门禁</em></p></div>
+      <div class="refi"><div class="rn">10</div><p><b>Awesome Harness Engineering</b> — GitHub ai-boost, 2026 · <em>70 个公开 agent 系统的五维实证</em></p></div>
+      <div class="refi"><div class="rn">11</div><p><b>Harness Engineering: Making AI Coding Agents Work in 2026</b> — Faros · <em>工具编排 / 验证回路 / 护栏</em></p></div>
+      <div class="refi"><div class="rn">12</div><p><b>AI Agent Harnesses Explained</b> — boringbot, 2026 · <em>两种参考架构的市场收敛</em></p></div>
+    </div>
+    <div class="strip reveal r4">
+      <span class="sc"><b>＋ 实践侧一手材料</b>：本项目 docs/答疑日志.md（实现答疑 + deepseek 源码答疑 19 条）</span>
+      <span class="sc">参考源码：pi · deepseek-harness（本地精读）</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 22 结尾 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Q &amp; A</div>
+    <h1 class="cover-title reveal r2">谢谢</h1>
+    <div class="cover-sub reveal r3">循环给骨架，预算给记忆，工具给双手，插座给生态，制度给信任——<br><b>harness 的工程设计，本质是给模型造一个值得托付的工作环境。</b></div>
+    <div class="strip reveal r4">
+      <span class="sc"><b>调研</b> 文献说应然</span>
+      <span class="sc"><b>实践</b> 手撕验所以然</span>
+      <span class="sc"><b>深读</b> 生产看制度</span>
+      <span class="sc"><b>心得</b> 哲学是同一条</span>
+    </div>
+  </div>
+  <div class="ring"></div>
+  <div class="block reveal r5"><div class="word">SURVEY · BUILD</div><div class="num">Q&amp;A</div></div>
+</section>
+
+<script>
+  /* ============================================================
+     SlidePresentation 控制器（skill 要求的标配能力）
+     键盘翻页 / 滚轮 / 触摸滑动 / 进度条 / 导航点 / IO 滚动动画
+     兼容 html-to-pptx 渲染：暴露 window.__deckLen + ArrowRight 翻页
+     ============================================================ */
+  class SlidePresentation {
+    constructor() {
+      this.slides = [...document.querySelectorAll('.slide')];
+      this.i = 0;
+      this.n = this.slides.length;
+      window.__deckLen = this.n;              // 供下游截图工具识别页数
+      this.progress = document.getElementById('progress');
+      this.counter = document.getElementById('counter');
+      this.dots = document.getElementById('dots');
+      this.buildDots();
+      this.bindKeys();
+      this.bindWheel();
+      this.bindTouch();
+      this.observe();
+    }
+    buildDots() {
+      this.slides.forEach((_, k) => {
+        const b = document.createElement('button');
+        b.setAttribute('aria-label', `跳到第 ${k + 1} 页`);
+        b.addEventListener('click', () => this.go(k));
+        this.dots.appendChild(b);
+      });
+      this.dotEls = [...this.dots.children];
+    }
+    go(k, smooth = true) {
+      k = Math.max(0, Math.min(this.n - 1, k));
+      this.i = k;
+      const root = document.documentElement;
+      if (!smooth) root.style.scrollBehavior = 'auto';  // 跳页模式绕过 CSS 平滑滚动，确保立即到位
+      this.slides[k].scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
+      if (!smooth) root.style.scrollBehavior = '';
+      this.slides[k].classList.add('visible');          // 导航目标页直接标记可见，不依赖 IO 时序
+      this.sync();
+    }
+    next() { this.go(this.i + 1); }
+    prev() { this.go(this.i - 1); }
+    sync() {
+      this.progress.style.width = `${((this.i + 1) / this.n) * 100}%`;
+      this.counter.textContent = `${String(this.i + 1).padStart(2, '0')} / ${this.n}`;
+      this.dotEls.forEach((d, k) => d.classList.toggle('on', k === this.i));
+    }
+    bindKeys() {
+      addEventListener('keydown', (e) => {
+        if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); this.next(); }
+        else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) { e.preventDefault(); this.prev(); }
+        else if (e.key === 'Home') { e.preventDefault(); this.go(0); }
+        else if (e.key === 'End') { e.preventDefault(); this.go(this.n - 1); }
+      });
+    }
+    bindWheel() {
+      let lock = false;                       // 节流：滚动动画期间不重复触发
+      addEventListener('wheel', (e) => {
+        if (lock) return;
+        lock = true; setTimeout(() => (lock = false), 650);
+        e.deltaY > 0 ? this.next() : this.prev();
+      }, { passive: true });
+    }
+    bindTouch() {
+      let x0 = null;
+      addEventListener('touchstart', (e) => (x0 = e.touches[0].clientX), { passive: true });
+      addEventListener('touchend', (e) => {
+        if (x0 === null) return;
+        const dx = e.changedTouches[0].clientX - x0;
+        if (Math.abs(dx) > 50) dx < 0 ? this.next() : this.prev();
+        x0 = null;
+      }, { passive: true });
+    }
+    observe() {
+      // 可视 slide 加 .visible → 触发内部 .reveal 入场动画；同时校准当前页码
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach((en) => {
+          if (en.isIntersecting && en.intersectionRatio >= 0.5) {
+            en.target.classList.add('visible');
+            this.i = this.slides.indexOf(en.target);
+            this.sync();
+          }
+        });
+      }, { threshold: [0.5] });
+      this.slides.forEach((s) => io.observe(s));
+    }
+  }
+  const deck = new SlidePresentation();
+  const params = new URLSearchParams(location.search);
+
+  // ?only=N：仅保留第 N 页并禁用入场动画（headless 截图专用，确定性渲染）
+  const only = parseInt(params.get('only') ?? '', 10);
+  if (Number.isInteger(only) && only >= 1 && only <= deck.n) {
+    deck.slides.forEach((s, k) => { if (k !== only - 1) s.remove(); });
+    document.documentElement.classList.add('capture');
+    deck.slides[only - 1].classList.add('visible');
+    deck.n = 1; deck.i = 0; deck.sync();
+  } else {
+    // ?slide=N 直接跳页（普通跳转，保留动画）
+    const q = parseInt(params.get('slide') ?? '', 10);
+    if (Number.isInteger(q)) deck.go(q - 1, false);
+  }
+</script>
+</body>
+</html>

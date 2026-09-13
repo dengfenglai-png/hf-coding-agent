@@ -10,3 +10,5 @@ tmp.md
 docs/pi-from-scratch.md
 docs/plans/
 docs/specs/
+.claude-design/
+__pycache__/

@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>从一句话需求到交付项目 — Harness 产品解剖</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+     一页式长文 · Bold Signal 视觉语言（与 agent-harness-deck 同源）
+     叙事：亲历入口 → harness 架构图 → 为什么能(对比聊天AI) → 代码原理
+     ============================================================ */
+  :root {
+    --bg: #141419; --card: #1D1D24; --card2: #23232B;
+    --ink: #F4F2ED; --sub: #9C9AA3;
+    --acc: #FF5C1F; --acc2: #FFC24B; --line: #33333C;
+    --ok: #7ED99A;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: "Archivo", "Noto Sans SC", "PingFang SC", sans-serif;
+    line-height: 1.7; overflow-x: hidden;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 clamp(1.1rem, 4vw, 3rem); }
+  section { padding: clamp(3rem, 7vh, 5.5rem) 0; }
+  .kicker {
+    display: flex; align-items: center; gap: 12px;
+    font-size: clamp(.72rem, 1vw, .85rem); font-weight: 700; letter-spacing: .26em;
+    color: var(--acc); text-transform: uppercase;
+  }
+  .kicker::before { content: ""; width: clamp(24px, 3vw, 42px); height: 3px; background: var(--acc); flex: none; }
+  h2 { margin-top: clamp(.5rem, 1.6vh, 1rem); font-weight: 900;
+    font-size: clamp(1.5rem, 3.4vw, 2.5rem); line-height: 1.18; letter-spacing: -.01em;
+    font-family: "Archivo Black", "Noto Sans SC", sans-serif; }
+  h2 em { font-style: normal; color: var(--acc); }
+  .lead { margin-top: 1rem; color: var(--sub); font-size: clamp(.95rem, 1.5vw, 1.15rem); max-width: 74ch; }
+  .lead b { color: var(--ink); }
+  .lead code, p code, li code { font-family: "JetBrains Mono", monospace; color: var(--acc2); font-size: .9em; }
+
+  /* ---- Hero ---- */
+  .hero { padding: clamp(4rem, 10vh, 7rem) 0 clamp(3rem, 7vh, 5rem); position: relative; overflow: hidden; }
+  .hero h1 {
+    margin-top: clamp(.8rem, 2.4vh, 1.4rem);
+    font-family: "Archivo Black", "Noto Sans SC", sans-serif; font-weight: 900;
+    font-size: clamp(2rem, 5.6vw, 4.4rem); line-height: 1.1; letter-spacing: -.01em;
+    max-width: 16ch;
+  }
+  .hero h1 em { font-style: normal; color: var(--acc); }
+  .hero .sub { margin-top: clamp(1rem, 2.6vh, 1.6rem); color: var(--sub);
+    font-size: clamp(.95rem, 1.6vw, 1.2rem); max-width: 62ch; }
+  .hero .sub b { color: var(--ink); }
+  .ring { position: absolute; right: -110px; top: -110px; width: 340px; height: 340px;
+    border-radius: 50%; border: 34px solid var(--card); pointer-events: none; }
+  .hero .tags { margin-top: 1.6rem; display: flex; flex-wrap: wrap; gap: 8px; }
+  .tag { background: var(--card2); border: 1px solid var(--line); border-radius: 8px;
+    padding: 5px 12px; font-size: clamp(.72rem, 1vw, .84rem); color: var(--sub); }
+  .tag b { color: var(--acc2); }
+
+  /* ---- 时间线经历卡 ---- */
+  .tl { margin-top: clamp(1.4rem, 3vh, 2.2rem); display: flex; flex-direction: column; gap: clamp(.8rem, 2vh, 1.2rem); }
+  .tli { display: grid; grid-template-columns: clamp(56px, 7vw, 86px) 1fr; gap: clamp(10px, 1.6vw, 18px); align-items: stretch; }
+  .tli .yr { font-family: "Archivo Black", sans-serif; color: var(--acc);
+    font-size: clamp(1rem, 1.9vw, 1.4rem); padding-top: 10px; }
+  .tli .tbox { background: var(--card); border-left: 3px solid var(--acc); border-radius: 0 12px 12px 0;
+    padding: clamp(.9rem, 2vh, 1.3rem) clamp(1rem, 1.8vw, 1.4rem); }
+  .tli .tti { font-weight: 700; font-size: clamp(1rem, 1.55vw, 1.2rem); }
+  .tli .tti span { color: var(--acc2); font-size: .8em; font-weight: 600; margin-left: 10px; }
+  .tli p { margin-top: 6px; color: var(--sub); font-size: clamp(.85rem, 1.25vw, 1rem); }
+  .tli p b { color: var(--ink); }
+  .punch { margin-top: clamp(1.4rem, 3vh, 2rem);
+    background: var(--card); border-left: 5px solid var(--acc); border-radius: 12px;
+    padding: clamp(1rem, 2.2vh, 1.5rem) clamp(1.1rem, 2vw, 1.6rem);
+    font-size: clamp(1rem, 1.9vw, 1.35rem); font-weight: 700; line-height: 1.55; }
+  .punch em { font-style: normal; color: var(--acc2); }
+  .punch small { display: block; margin-top: 6px; font-size: clamp(.75rem, 1vw, .88rem);
+    font-weight: 500; color: var(--sub); }
+
+  /* ---- 架构图（HTML/CSS 原生） ---- */
+  .arch { margin-top: clamp(1.4rem, 3vh, 2.2rem); display: flex; flex-direction: column; gap: 0; }
+  .band { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: clamp(.8rem, 1.8vh, 1.2rem) clamp(1rem, 1.8vw, 1.5rem); }
+  .band .bt { font-weight: 700; font-size: clamp(.95rem, 1.45vw, 1.12rem); display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .band .bt span { color: var(--acc); font-family: "Archivo Black", sans-serif; font-size: .85em; }
+  .band .bd { margin-top: 6px; color: var(--sub); font-size: clamp(.8rem, 1.15vw, .95rem); }
+  .band .bd b { color: var(--ink); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chips .c { background: #2A2A33; border-radius: 6px; padding: 3px 10px;
+    font-size: clamp(.72rem, .95vw, .82rem); color: var(--ink); white-space: nowrap; }
+  .chips .c.gold { background: rgba(255,194,75,.12); color: var(--acc2); border: 1px solid rgba(255,194,75,.35); }
+  .chips .c.hot { background: rgba(255,92,31,.14); color: #FFB48E; border: 1px solid rgba(255,92,31,.38); }
+  .flow { text-align: center; color: var(--acc); font-weight: 700;
+    font-size: clamp(.85rem, 1.2vw, 1rem); line-height: 1.3; padding: 6px 0; }
+  .flow span { color: var(--sub); font-weight: 500; margin-left: 8px; font-size: .88em; }
+  /* harness 核心大框：5 模块 */
+  .harness { border: 2px solid rgba(255,92,31,.55); border-radius: 14px; background: rgba(255,92,31,.03);
+    padding: clamp(.9rem, 2vh, 1.3rem); }
+  .harness .ht { text-align: center; font-family: "Archivo Black", "Noto Sans SC", sans-serif; font-weight: 900;
+    font-size: clamp(1.05rem, 1.9vw, 1.4rem); color: var(--acc); letter-spacing: .12em; }
+  .harness .hs { text-align: center; color: var(--sub); font-size: clamp(.75rem, 1.05vw, .88rem); margin-top: 2px; }
+  .hgrid { margin-top: clamp(.7rem, 1.6vh, 1rem); display: grid; grid-template-columns: repeat(2, 1fr);
+    gap: clamp(.5rem, 1.2vw, .8rem); }
+  .hm { background: var(--card); border-radius: 10px; padding: clamp(.6rem, 1.4vh, .9rem) clamp(.7rem, 1.2vw, 1rem);
+    border-top: 3px solid var(--acc); }
+  .hm.wide { grid-column: 1 / -1; }
+  .hm .mt { font-weight: 700; font-size: clamp(.88rem, 1.3vw, 1.02rem); }
+  .hm .mt i { font-style: normal; color: var(--acc2); font-size: .82em; margin-left: 8px; }
+  .hm p { margin-top: 4px; color: var(--sub); font-size: clamp(.74rem, 1.05vw, .88rem); line-height: 1.55; }
+  .hm p b { color: var(--ink); }
+  .duo { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(.5rem, 1.2vw, .8rem); }
+
+  /* ---- 对比表 ---- */
+  .cmp { margin-top: clamp(1.2rem, 2.6vh, 1.8rem); width: 100%; border-collapse: collapse;
+    font-size: clamp(.78rem, 1.1vw, .95rem); }
+  .cmp th, .cmp td { border: 1px solid var(--line); padding: clamp(.5rem, 1.1vh, .7rem) clamp(.55rem, 1vw, .8rem);
+    text-align: left; vertical-align: top; line-height: 1.5; color: var(--sub); }
+  .cmp thead th { background: var(--card2); font-weight: 700; }
+  .cmp thead th.no { color: var(--sub); }
+  .cmp thead th.yes { color: var(--acc); }
+  .cmp td.k { color: var(--ink); font-weight: 700; background: rgba(255,255,255,.025); white-space: nowrap; }
+  .cmp td b { color: var(--ink); }
+  .cmp td .x { color: #E07B7B; font-weight: 700; }
+  .cmp td .o { color: var(--ok); font-weight: 700; }
+
+  /* ---- 代码原理块 ---- */
+  .principle { margin-top: clamp(1.6rem, 3.6vh, 2.6rem); display: grid; grid-template-columns: 1fr;
+    gap: clamp(1rem, 2.4vh, 1.6rem); }
+  .pblock { background: var(--card); border-radius: 14px; border-left: 5px solid var(--acc);
+    padding: clamp(1rem, 2.2vh, 1.5rem) clamp(1.1rem, 2vw, 1.6rem); }
+  .pblock .pt2 { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .pblock .pn { font-family: "Archivo Black", sans-serif; color: var(--acc); font-size: clamp(1.1rem, 2vw, 1.5rem); }
+  .pblock .ptt { font-weight: 900; font-size: clamp(1.05rem, 1.8vw, 1.3rem);
+    font-family: "Archivo Black", "Noto Sans SC", sans-serif; }
+  .pblock .ptt span { color: var(--acc2); font-size: .8em; font-family: "Archivo", sans-serif; font-weight: 600; margin-left: 8px; }
+  .pblock p.desc { margin-top: 6px; color: var(--sub); font-size: clamp(.85rem, 1.2vw, 1rem); }
+  .pblock p.desc b { color: var(--ink); }
+  pre.code {
+    margin-top: .8rem; background: #101016; border: 1px solid var(--line); border-radius: 10px;
+    padding: clamp(.8rem, 1.8vh, 1.1rem) clamp(.9rem, 1.6vw, 1.2rem);
+    font-family: "JetBrains Mono", monospace; font-size: clamp(.72rem, 1.02vw, .88rem);
+    line-height: 1.65; overflow-x: auto; color: #C9CBD4;
+  }
+  pre.code .k { color: var(--acc); font-weight: 700; }        /* 关键字/控制流 */
+  pre.code .s { color: var(--acc2); }                          /* 字符串/标识 */
+  pre.code .c { color: #6E6C78; }                              /* 注释 */
+  pre.code .f { color: #8FC7FF; }                              /* 函数 */
+  .pblock .notes { margin-top: .7rem; display: flex; flex-direction: column; gap: 5px; }
+  .pblock .notes p { color: var(--sub); font-size: clamp(.78rem, 1.08vw, .92rem); padding-left: 1.1em; position: relative; }
+  .pblock .notes p::before { content: "▸"; position: absolute; left: 0; color: var(--acc); }
+  .pblock .notes p b { color: var(--ink); }
+
+  /* ---- 收束 ---- */
+  .endbox { background: var(--card); border-radius: 16px; border-left: 5px solid var(--acc2);
+    padding: clamp(1.2rem, 2.6vh, 1.8rem) clamp(1.2rem, 2.2vw, 1.8rem); }
+  .endbox h3 { font-weight: 900; font-size: clamp(1.1rem, 1.9vw, 1.4rem);
+    font-family: "Archivo Black", "Noto Sans SC", sans-serif; }
+  .endbox p { margin-top: 8px; color: var(--sub); font-size: clamp(.88rem, 1.25vw, 1.02rem); }
+  .endbox p b { color: var(--ink); }
+  footer { padding: 2.4rem 0 3.2rem; color: var(--sub); font-size: clamp(.75rem, 1vw, .88rem);
+    border-top: 1px solid var(--line); }
+  footer b { color: var(--acc2); }
+
+  /* ---- 入场动画 ---- */
+  .rv { opacity: 0; transform: translateY(24px); transition: opacity .6s cubic-bezier(.2,.8,.25,1), transform .6s cubic-bezier(.2,.8,.25,1); }
+  .rv.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { .rv { opacity: 1; transform: none; transition: none; } }
+
+  /* ---- 响应式 ---- */
+  @media (max-width: 640px) {
+    .hgrid, .duo { grid-template-columns: 1fr; }
+    .cmp { font-size: .72rem; }
+    .cmp td.k { white-space: normal; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= Hero ================= -->
+<header class="hero">
+  <div class="ring"></div>
+  <div class="wrap">
+    <div class="kicker rv">From Prompt to Product · 学习笔记</div>
+    <h1 class="rv">一句话需求，<br>如何变成一个<em>交付的项目</em></h1>
+    <p class="sub rv">我在 Coze 上编排工作流、发布成 API、集成进网站；也在 Claude Code 里只提一个需求，
+      就看着 agent 交付出完整项目。<b>这篇文章回答两个问题：这类产品凭什么能做到？底层的代码逻辑是什么？</b></p>
+    <div class="tags rv">
+      <span class="tag"><b>入口</b> Coze 工作流 → API → 网站</span>
+      <span class="tag"><b>对照</b> 豆包 / ChatGPT 为什么不行</span>
+      <span class="tag"><b>拆解</b> harness 架构图</span>
+      <span class="tag"><b>原理</b> 亲手实现的代码逻辑</span>
+    </div>
+  </div>
+</header>
+
+<!-- ================= 01 亲历：两类产品，同一件事 ================= -->
+<section id="story">
+  <div class="wrap">
+    <div class="kicker rv">01 · 亲历 — 两类产品，同一件事</div>
+    <h2 class="rv">我先把需求<em>跑通</em>了三遍</h2>
+    <p class="lead rv">同一个目标——<b>把数据做成一个能看的网站</b>——我用三种越来越「自动化」的方式各做了一遍：</p>
+    <div class="tl">
+      <div class="tli rv"><div class="yr">①</div><div class="tbox">
+        <div class="tti">Coze 工作流<span>可视化编排</span></div>
+        <p>在 Coze 画布上把 <b>LLM 节点 / 代码节点 / 插件</b> 拖成一张 DAG：输入数据 → 模型加工 → 输出结构化结果，<b>发布成工作流 API</b>。编排逻辑写在画布上——<b>每一步做什么，是我（人）决定的</b>。</p></div></div>
+      <div class="tli rv"><div class="yr">②</div><div class="tbox">
+        <div class="tti">API 集成进网站<span>沙盒 + code agent 开发</span></div>
+        <p>把工作流 API 接入 <b>Coze 沙盒环境</b>，与 code agent 开发好的网站拼装，实现<b>数据展示</b>。此时模型在「节点里」干活，网站在「沙盒里」跑——<b>能力有了，但胶水还是我写的</b>。</p></div></div>
+      <div class="tli rv"><div class="yr">③</div><div class="tbox">
+        <div class="tti">Claude Code 一句话交付<span>agent harness</span></div>
+        <p>日常用 Claude Code：我只给<b>一个需求</b>，agent 自己读代码、改文件、跑命令、修报错，交付一个成熟项目。编排逻辑消失了——<b>不是没有了，是搬进了模型的工作过程里</b>。</p></div></div>
+    </div>
+    <div class="punch rv">
+      三种形态背后是<em>同一类产品</em>：把「一次文本生成」包装成「能连续干活并交付」的系统——业界叫它 <em>Agent Harness</em>。
+      <small>区别只在「谁做路由」：①人拖节点 ②人写胶水 ③模型自己在上下文里决策。</small>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 02 harness 产品架构图 ================= -->
+<section id="arch">
+  <div class="wrap">
+    <div class="kicker rv">02 · 拆解 — Harness 产品架构图</div>
+    <h2 class="rv">模型只做决策，<em>其余都是 harness</em></h2>
+    <p class="lead rv">一个 harness 产品的完整纵切面（Claude Code / Coze agent / 我手撕的 pi-from-scratch 都长这样）：</p>
+
+    <div class="arch">
+      <div class="band rv">
+        <div class="bt"><span>用户</span>一句话需求</div>
+        <div class="bd">「帮我把这批数据做成一个展示网站」——需求可以只有一句，<b>完整性由 harness 的循环来补</b>。</div>
+      </div>
+      <div class="flow rv">↓<span>提交给</span></div>
+      <div class="band rv">
+        <div class="bt"><span>界面层</span>产品的外壳</div>
+        <div class="chips">
+          <span class="c hot">TUI（Claude Code 终端）</span>
+          <span class="c">IDE 插件</span>
+          <span class="c gold">Coze 画布（工作流编辑器）</span>
+          <span class="c gold">Coze 沙盒（预览网站）</span>
+          <span class="c">Web 对话框</span>
+        </div>
+        <div class="bd">外壳千差万别，往下都是同一套 harness。</div>
+      </div>
+      <div class="flow rv">↓<span>进入核心</span></div>
+
+      <div class="harness rv">
+        <div class="ht">HARNESS</div>
+        <div class="hs">模型之外的一切 —— 产品真正的工程重心</div>
+        <div class="hgrid">
+          <div class="hm"><div class="mt">Agent Loop<i>循环 · 灵魂</i></div>
+            <p><b>while 循环</b>：流式调用 → 有 <code>tool_call</code> 就执行 → 结果回填上下文 → 继续，直到模型不再调工具。<b>四种停止条件 + abort 兜底</b>。</p></div>
+          <div class="hm"><div class="mt">上下文管理<i>预算</i></div>
+            <p>token 估算、<b>安全切点</b>、超限摘要压缩；skills 目录常驻 + 按需加载（渐进披露）——<b>上下文是有限资源</b>。</p></div>
+          <div class="hm"><div class="mt">工具系统<i>双手</i></div>
+            <p>每个工具带 <b>schema 契约</b>：校验失败返回结构化错误让模型自纠；并行执行 + 超时兜底。<b>工具是模型唯一的动作形式</b>。</p></div>
+          <div class="hm"><div class="mt">安全护栏<i>信任</i></div>
+            <p>执行前审批、敏感路径拦截、结果脱敏、<b>死循环检测</b>——能干活的系统必须有闸门。</p></div>
+          <div class="hm wide"><div class="mt">生态插座<i>能力的来源</i></div>
+            <div class="chips">
+              <span class="c">内置工具：read / write / bash / grep …</span>
+              <span class="c gold">MCP：JSON-RPC 接外部工具服务</span>
+              <span class="c gold">Skills：目录 + load_skill 按需加载工作流知识</span>
+              <span class="c gold">Coze 工作流 API：也是一种「外部能力」</span>
+            </div></div>
+        </div>
+      </div>
+
+      <div class="flow rv">↓ ↑<span>tool_call 发出 / tool_result 喂回 —— 循环的血肉</span></div>
+      <div class="duo rv">
+        <div class="band">
+          <div class="bt"><span>LLM Provider</span>决策引擎</div>
+          <div class="bd">SSE 流式返回<b>四类事件</b>：text_delta / tool_call / done / error。<b>模型永远只做一件事：决定下一步</b>。</div>
+        </div>
+        <div class="band">
+          <div class="bt"><span>执行环境</span>手脚所在</div>
+          <div class="chips"><span class="c">文件系统</span><span class="c">终端命令</span><span class="c">沙盒（Coze / 本地）</span><span class="c">外部 API</span></div>
+          <div class="bd">确定性代码在这里跑，结果作为「感知」回传。</div>
+        </div>
+      </div>
+      <div class="flow rv">↓<span>循环收敛后</span></div>
+      <div class="band rv">
+        <div class="bt"><span>交付</span>可运行的产物</div>
+        <div class="chips"><span class="c hot">一个能跑的项目（代码 + 文档 + 测试）</span><span class="c hot">数据展示网站</span><span class="c">工作流 API</span></div>
+      </div>
+    </div>
+
+    <p class="lead rv" style="margin-top:1.4rem">
+      对照我的三遍经历：<b>Coze 把「循环」外化成画布上的 DAG</b>（路由写给人看），
+      <b>Claude Code 把循环藏在 harness 里</b>（路由由模型在上下文中决策）。模型越强，路由越多地从人搬到模型——这正是两种产品形态的分水岭。
+    </p>
+  </div>
+</section>
+
+<!-- ================= 03 为什么 harness 能，聊天 AI 不能 ================= -->
+<section id="why">
+  <div class="wrap">
+    <div class="kicker rv">03 · 提问 — 凭什么它能做到？</div>
+    <h2 class="rv">同样的模型，为什么<em>豆包 / ChatGPT 不行</em></h2>
+    <p class="lead rv">先澄清：<b>豆包、ChatGPT 和 Claude Code 背后是同级别的模型</b>。差别不在模型，在产品把模型「包」成了什么：</p>
+
+    <table class="cmp rv">
+      <thead><tr><th>维度</th><th class="no">聊天 AI（豆包 / ChatGPT 对话框）</th><th class="yes">Harness 产品（Claude Code / Coze agent）</th></tr></thead>
+      <tbody>
+        <tr><td class="k">交互形态</td><td><span class="x">✗</span> 一问一答，答完即止</td><td><span class="o">✓</span> <b>循环直到任务完成</b>（while + 停止条件）</td></tr>
+        <tr><td class="k">行动能力</td><td><span class="x">✗</span> 只能生成文本，<b>文本不是动作</b></td><td><span class="o">✓</span> <code>tool_call</code> 执行真实动作：读写文件、跑命令、调 API</td></tr>
+        <tr><td class="k">环境访问</td><td><span class="x">✗</span> 无文件系统 / 终端 / 沙盒</td><td><span class="o">✓</span> 工具连着<b>真实环境</b>，能创建项目并跑起来</td></tr>
+        <tr><td class="k">上下文</td><td><span class="x">✗</span> 单会话窗口，长了就忘</td><td><span class="o">✓</span> 预算经营：<b>压缩 / 笔记 / 按需加载</b>，跨压缩保持连贯</td></tr>
+        <tr><td class="k">状态持久</td><td><span class="x">✗</span> 关掉即失，重开靠用户复述</td><td><span class="o">✓</span> session 落盘、配对校验，<b>崩溃可恢复</b></td></tr>
+        <tr><td class="k">确定性</td><td><span class="x">✗</span> 全靠 token 生成，排序都可能出错</td><td><span class="o">✓</span> 确定性逻辑交给<b>工具里的代码</b>，模型只做路由</td></tr>
+        <tr><td class="k">安全闸门</td><td><span class="x">—</span> 不执行，所以不需要</td><td><span class="o">✓</span> 审批 / 拦截 / 脱敏 / 防循环——<b>能干活才需要护栏</b></td></tr>
+      </tbody>
+    </table>
+
+    <div class="punch rv" style="margin-top:1.6rem">
+      答案一句话：<em>模型没变，变的是外面那圈工程</em>——把「一次生成」包进「循环 + 工具 + 预算 + 护栏」，模型就从聊天框变成了能交付项目的 agent。
+      <small>理论出处：ReAct（2022）证明「推理 × 行动」交错优于纯生成；harness 是这个闭环的工程化。</small>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 04 底层代码逻辑与原理（学习成果） ================= -->
+<section id="code">
+  <div class="wrap">
+    <div class="kicker rv">04 · 学习成果 — 底层代码逻辑与原理</div>
+    <h2 class="rv">我把它从零<em>手撕</em>了一遍</h2>
+    <p class="lead rv">以下代码全部来自我的学习项目 <b>pi-from-scratch</b>（从零实现的极简 coding agent）。
+      四个模块，就是上面那张架构图的可运行注脚：</p>
+
+    <div class="principle">
+
+      <div class="pblock rv">
+        <div class="pt2"><div class="pn">①</div><div class="ptt">Agent Loop<span>while 循环 · ~200 行的灵魂</span></div></div>
+        <p class="desc">「一句话交付项目」的全部秘密：模型决定下一步，harness 执行并回填，<b>循环直到收敛</b>。</p>
+<pre class="code"><span class="k">while</span> (<span class="k">true</span>) {
+  <span class="k">const</span> events = <span class="k">await</span> <span class="f">streamFn</span>(model, context, tools)      <span class="c">// ① 流式调用：SSE 四事件</span>
+  <span class="k">if</span> (stopReason === <span class="s">'end_turn'</span>) <span class="k">break</span>                        <span class="c">// ② 停止条件（四种之一）</span>
+  <span class="k">for</span> (<span class="k">const</span> call <span class="k">of</span> toolCalls) {                            <span class="c">// ③ 工具 = 模型唯一的动作形式</span>
+    <span class="k">const</span> result = <span class="k">await</span> <span class="f">executeTool</span>(call)                   <span class="c">//    校验 → 审批 → 超时兜底</span>
+    context.messages.<span class="f">push</span>(<span class="f">toolResult</span>(call, result))           <span class="c">// ④ 回填：必须与 call 配对！</span>
+  }
+  <span class="k">if</span> (<span class="f">estimateTokens</span>(context) &gt; <span class="s">0.8</span> * window)                <span class="c">// ⑤ 预算检查</span>
+    <span class="k">await</span> <span class="f">compactContext</span>(context, streamFn)                 <span class="c">//    摘要压缩（失败保留原文）</span>
+}</pre>
+        <div class="notes">
+          <p><b>停止条件有四条</b>：end_turn（正常收工）/ max_tokens（截断）/ aborted（用户中断——为被跳过的调用补 error 结果，保配对）/ error（重试退避后仍失败）。</p>
+          <p><b>失败不抛异常</b>：错误编码进事件流（error 事件），上层统一处理——循环永不因工具失败而崩溃。</p>
+          <p>这就是「边界比循环重要」：聊天 AI 缺的不是这个 while，是<b>整个可安全回填的环境</b>。</p>
+        </div>
+      </div>
+
+      <div class="pblock rv">
+        <div class="pt2"><div class="pn">②</div><div class="ptt">消息模型与配对安全<span>为什么 session 恢复后不炸</span></div></div>
+        <p class="desc">模型看到的是一串消息；<b>每个 tool_call 必须有对应的 tool_result</b>，否则 API 直接 400。</p>
+<pre class="code">[
+  { role: <span class="s">'user'</span>,      content: <span class="s">"把数据做成网站"</span> },
+  { role: <span class="s">'assistant'</span>, tool_calls: [{ id: <span class="s">'call_1'</span>, name: <span class="s">'write_file'</span>, args: {...} }] },
+  { role: <span class="s">'tool'</span>,       tool_call_id: <span class="s">'call_1'</span>,                        <span class="c">// ← 必须回指 call_1</span>
+                 content: <span class="s">"written: index.html (2.1 KB)"</span> },
+  { role: <span class="s">'assistant'</span>, content: <span class="s">"已创建页面，接下来启动预览…"</span> }   <span class="c">// 循环继续</span>
+]</pre>
+        <div class="notes">
+          <p><b>三条纪律</b>：abort 时丢弃未完成的 tool_calls 并<b>补 error 结果</b>；session.jsonl <b>逐行容错</b>（崩溃可能写出半行 JSON，跳过单行好过丢全部历史）；压缩选点<b>不能切在配对中间</b>。</p>
+          <p>聊天 AI 没有「动作」，自然没有配对问题——<b>整个消息模型就是为「行动」设计的</b>。</p>
+        </div>
+      </div>
+
+      <div class="pblock rv">
+        <div class="pt2"><div class="pn">③</div><div class="ptt">上下文即预算<span>长任务不失忆的原理</span></div></div>
+        <p class="desc">模型有 <b>context rot</b>（token 越多召回越差），所以上下文要像预算一样经营——工程原则：<b>「最小的高信号 token 集」</b>。</p>
+<pre class="code"><span class="c">// 估算：chars / 4 近似 token，误差由 0.8 阈值的提前量吸收</span>
+<span class="k">const</span> used = <span class="f">estimateTokens</span>(context)
+<span class="k">if</span> (used &gt; <span class="s">0.8</span> * contextWindow) {
+  <span class="k">const</span> summary = <span class="k">await</span> <span class="f">summarize</span>(oldMessages)        <span class="c">// 让 LLM 自己摘要旧消息</span>
+  context.messages = [ <span class="f">summaryMsg</span>(summary), ...recent ]  <span class="c">// 保留 system + 摘要 + 最近对话</span>
+}
+<span class="c">// 两条红线：失败保留原文（空摘要比没有更危险）；abort 时不压缩</span></pre>
+        <div class="notes">
+          <p>三板斧各管一摊：<b>压缩管叙事连贯、笔记管任务状态（todo_write）、子代理管注意力分配</b>。</p>
+          <p>Skills 渐进披露也是预算问题：目录（name + description）常驻只花几十 token，正文 <code>load_skill</code> <b>用到才进上下文</b>。</p>
+        </div>
+      </div>
+
+      <div class="pblock rv">
+        <div class="pt2"><div class="pn">④</div><div class="ptt">能力插座<span>MCP + Skills：能力从哪来</span></div></div>
+        <p class="desc">Coze 里我拖插件节点；harness 里对应两套协议——<b>MCP 管连接，Skills 管工作流知识</b>。</p>
+<pre class="code"><span class="c">// MCP：stdio 上的 JSON-RPC 三步</span>
+<span class="f">send</span>({ method: <span class="s">'initialize'</span>, params: { protocolVersion: <span class="s">'2024-11-05'</span> } })   <span class="c">// 握手</span>
+<span class="k">const</span> { tools } = <span class="k">await</span> <span class="f">request</span>(<span class="s">'tools/list'</span>)                          <span class="c">// 发现</span>
+<span class="k">await</span> <span class="f">request</span>(<span class="s">'tools/call'</span>, { name, arguments })                     <span class="c">// 调用 → 适配成普通 AgentTool</span>
+
+<span class="c">// Skills：目录常驻 system prompt，模型自主路由后按需加载</span>
+<span class="s">"&lt;available_skills&gt; code-review: 审查代码并给出行级意见 …&lt;/available_skills&gt;"</span>
+模型: <span class="f">load_skill</span>({ name: <span class="s">'code-review'</span> })  →  <span class="s">"&lt;skill_content&gt; 完整指令 …&lt;/skill_content&gt;"</span></pre>
+        <div class="notes">
+          <p><b>防幻觉引导</b>：「目录只有摘要，未加载前不要推断指令」——一句话挡住从摘要脑补工作流。</p>
+          <p>我亲测的迭代：关键词匹配激活（v1）漏激活、枚举不完、逐轮淡出；改<b>模型语义路由</b>（v2）后三个问题同时消失——<b>路由本来就该交给模型</b>。</p>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="endbox rv" style="margin-top:2rem">
+      <h3>回到最初的问题</h3>
+      <p>Coze 让我把工作流「画」出来，Claude Code 让我把工作流「说」出来——
+        两者中间隔着的，就是 harness：<b>一个循环（模型决策）+ 一份预算（上下文经营）+ 一双手（工具）+ 一个插座（生态）+ 一套闸门（安全）</b>。
+        聊天 AI 与 agent 的差距不在模型，在这圈工程——而它每一块都可以被亲手写出来、读懂、改进。这正是我这段时间的学习成果。</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    学习来源：亲手实现的项目 <b>pi-from-scratch</b>（从零手撕 agent harness）及其答疑日志 ·
+    文献：<b>ReAct (2022)</b> · <b>Voyager (2023)</b> · <b>SWE-agent (NeurIPS 2024)</b> ·
+    <b>Anthropic — Building Effective Agents / Effective Context Engineering / Agent Skills (2024–25)</b>
+  </div>
+</footer>
+
+<script>
+  // 长页滚动入场：进入视口后加 .in
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((en) => { if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); } });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.rv').forEach((el) => io.observe(el));
+</script>
+</body>
+</html>

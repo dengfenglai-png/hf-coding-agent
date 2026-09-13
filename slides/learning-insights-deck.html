@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>学习心得 — 从会用到看懂 Agent Harness</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@500;600;700&family=Noto+Sans+SC:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+     学习心得 · 13 页 · 四幕（起点→方法→转变→沉淀）
+     与 agent-harness-deck 同源的 Bold Signal 系统；
+     区别：本 deck 以「学习者」为主角——认知的 before/after 是核心组件
+     ============================================================ */
+  :root {
+    --bg: #141419; --card: #1D1D24; --card2: #23232B;
+    --ink: #F4F2ED; --sub: #9C9AA3;
+    --acc: #FF5C1F; --acc2: #FFC24B; --line: #33333C;
+    --title-size: clamp(1.5rem, 3.3vw, 2.5rem);
+    --body-size: clamp(0.85rem, 1.42vw, 1.1rem);
+    --small-size: clamp(0.68rem, 0.98vw, 0.84rem);
+    --slide-padding: clamp(1rem, 3.4vw, 3.4rem);
+    --content-gap: clamp(0.45rem, 1.6vh, 1.2rem);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow-x: hidden; }
+  html { scroll-snap-type: y mandatory; scroll-behavior: smooth; }
+  .slide {
+    width: 100vw; height: 100vh; height: 100dvh;
+    overflow: hidden; scroll-snap-align: start;
+    display: flex; flex-direction: column; position: relative;
+    background: var(--bg); color: var(--ink);
+    font-family: "Archivo", "Noto Sans SC", "PingFang SC", sans-serif;
+  }
+  .slide-content {
+    flex: 1; display: flex; flex-direction: column; justify-content: center;
+    max-height: 100%; overflow: hidden;
+    padding: var(--slide-padding);
+    padding-right: calc(var(--slide-padding) + clamp(28px, 4vw, 56px));
+  }
+  #progress { position: fixed; top: 0; left: 0; height: 4px; width: 0;
+    background: var(--acc); z-index: 99; transition: width .3s ease; }
+  #dots { position: fixed; right: clamp(10px, 1.6vw, 22px); top: 50%; transform: translateY(-50%);
+    display: flex; flex-direction: column; gap: 9px; z-index: 99; }
+  #dots button { width: 9px; height: 9px; border-radius: 50%; border: none; cursor: pointer;
+    background: var(--line); transition: all .25s ease; }
+  #dots button.on { background: var(--acc); transform: scale(1.5); box-shadow: 0 0 10px rgba(255,92,31,.6); }
+  #counter { position: fixed; bottom: 14px; right: clamp(14px, 2vw, 26px);
+    font-size: var(--small-size); color: var(--sub); letter-spacing: .12em; z-index: 99;
+    font-family: "Archivo", monospace; }
+
+  .kicker { display: flex; align-items: center; gap: 12px;
+    font-size: var(--small-size); font-weight: 700; letter-spacing: .26em;
+    color: var(--acc); text-transform: uppercase; }
+  .kicker::before { content: ""; width: clamp(24px, 3vw, 42px); height: 3px; background: var(--acc); flex: none; }
+  h2 { margin-top: clamp(.4rem, 1.4vh, .9rem); font-weight: 900;
+    font-size: var(--title-size); line-height: 1.15; letter-spacing: -.01em;
+    font-family: "Archivo Black", "Noto Sans SC", sans-serif; }
+  h2 em { font-style: normal; color: var(--acc); }
+  h2 s { text-decoration: line-through; text-decoration-color: var(--acc); text-decoration-thickness: .12em; color: var(--sub); }
+  h2 u { text-decoration: none; }
+
+  .pts { margin-top: var(--content-gap); display: flex; flex-direction: column; gap: clamp(.42rem, 1.35vh, .8rem); }
+  .pt { display: flex; gap: clamp(10px, 1.4vw, 18px); align-items: baseline; }
+  .pt .no { font-family: "Archivo Black", sans-serif; flex: none;
+    font-size: clamp(.78rem, 1.2vw, .98rem); color: var(--acc); letter-spacing: .05em; }
+  .pt p { font-size: var(--body-size); line-height: 1.55; color: var(--sub); max-width: 76ch; }
+  .pt p b { color: var(--ink); font-weight: 700; }
+  .pt p code { font-family: "Archivo", monospace; color: var(--acc2); font-size: .92em; }
+
+  .cols { margin-top: var(--content-gap); display: grid; grid-template-columns: 1fr 1fr;
+    gap: clamp(.42rem, 1.35vh, .8rem) clamp(16px, 2.4vw, 30px); align-items: start; }
+
+  .banner { margin-top: var(--content-gap);
+    background: var(--card); border-left: 5px solid var(--acc); border-radius: 10px;
+    padding: clamp(12px, 2vh, 20px) clamp(16px, 2.4vw, 28px);
+    font-size: clamp(.95rem, 1.85vw, 1.35rem); font-weight: 700; line-height: 1.45;
+    max-width: min(92%, 1020px); }
+  .banner em { font-style: normal; color: var(--acc2); }
+  .banner small { display: block; margin-top: 5px; font-size: clamp(.68rem, .95vw, .8rem);
+    font-weight: 500; color: var(--sub); letter-spacing: .06em; }
+
+  .dgrid { margin-top: var(--content-gap); display: grid; grid-template-columns: 1fr 1fr;
+    gap: clamp(8px, 1.4vw, 14px); }
+  .dc { background: var(--card); border-radius: 10px; padding: clamp(10px, 1.8vh, 16px) clamp(13px, 1.5vw, 20px);
+    border-top: 3px solid var(--acc); }
+  .dc.before { border-top-color: var(--line); }
+  .dc.after { border-top-color: var(--acc2); }
+  .dc .dt { font-weight: 900; font-size: clamp(.92rem, 1.45vw, 1.1rem);
+    font-family: "Archivo Black", "Noto Sans SC", sans-serif; }
+  .dc .dt span { color: var(--acc); font-size: .78em; margin-right: 7px; }
+  .dc.before .dt span { color: var(--sub); }
+  .dc.after .dt span { color: var(--acc2); }
+  .dc p { margin-top: 5px; font-size: clamp(.74rem, 1.12vw, .92rem); color: var(--sub); line-height: 1.58; }
+  .dc p b { color: var(--ink); }
+  .dgrid.cols3 { grid-template-columns: repeat(3, 1fr); }
+  .dc .tk { margin-top: 8px; padding-top: 8px; border-top: 1px dashed #33333C; }
+  .dc .tk b { color: var(--acc2); }
+
+  .steps { margin-top: var(--content-gap); display: flex; gap: clamp(9px, 1.5vw, 16px); flex-wrap: wrap; }
+  .step { flex: 1 1 200px; background: var(--card); border-radius: 10px;
+    padding: clamp(11px, 1.9vh, 18px) clamp(13px, 1.5vw, 20px);
+    border-top: 3px solid var(--acc); }
+  .step .sn { font-family: "Archivo Black", sans-serif; color: var(--acc); font-size: var(--small-size); letter-spacing: .15em; }
+  .step .stt { margin: 5px 0 6px; font-weight: 700; font-size: clamp(.92rem, 1.45vw, 1.1rem); }
+  .step p { font-size: clamp(.7rem, 1.05vw, .88rem); color: var(--sub); line-height: 1.55; }
+  .step p b { color: var(--ink); }
+  .step p .lab { color: var(--acc2); font-weight: 700; }
+
+  .strip { margin-top: var(--content-gap); display: flex; flex-wrap: wrap; gap: 7px; }
+  .strip .sc { background: var(--card2); border: 1px solid var(--line); border-radius: 8px;
+    padding: 5px 11px; font-size: clamp(.66rem, .98vw, .8rem); color: var(--sub); line-height: 1.45; }
+  .strip .sc b { color: var(--acc2); }
+  .strip .sc.hot { border-color: rgba(255,92,31,.4); } .strip .sc.hot b { color: var(--acc); }
+
+  /* ---- 图示容器：内联 SVG 绘制，与全 deck 同源配色 ---- */
+  .fig { margin-top: var(--content-gap); background: #17171C; border: 1px solid var(--line);
+    border-radius: 10px; padding: clamp(8px, 1.4vh, 13px) clamp(12px, 1.5vw, 18px); }
+  .fig svg { display: block; width: 100%; height: auto; }
+  .figcap { margin-top: 5px; font-size: var(--small-size); color: var(--sub); }
+  .figcap b { color: var(--acc2); }
+  .dchead { display: flex; align-items: center; gap: 10px; }
+  .phead { display: flex; align-items: center; gap: 9px; }
+  /* 用户输入提示词胶囊（引子页） */
+  .ask { margin-top: var(--content-gap); background: #17171C; border: 1px solid rgba(255,194,75,.35);
+    border-radius: 10px; padding: clamp(8px, 1.4vh, 12px) clamp(12px, 1.5vw, 18px);
+    font-size: clamp(.8rem, 1.2vw, 1rem); line-height: 1.5; color: var(--ink); }
+  .ask .u { color: var(--sub); font-size: .8em; margin-right: 8px; letter-spacing: .08em; }
+
+  .acts { margin-top: var(--content-gap); display: grid; grid-template-columns: 1fr 1fr;
+    gap: clamp(8px, 1.4vw, 14px); }
+  .act { background: var(--card); border-radius: 12px; padding: clamp(10px, 1.9vh, 18px) clamp(13px, 1.6vw, 20px);
+    border-top: 3px solid var(--acc); }
+  .act .an { font-family: "Archivo Black", sans-serif; color: var(--acc);
+    font-size: clamp(.75rem, 1.1vw, .9rem); letter-spacing: .18em; }
+  .act .rng { float: right; color: var(--acc2); font-size: clamp(.66rem, .95vw, .8rem);
+    font-family: "Archivo", monospace; letter-spacing: .08em; }
+  .act .att { margin-top: 5px; font-weight: 900; font-size: clamp(.98rem, 1.6vw, 1.22rem);
+    font-family: "Archivo Black", "Noto Sans SC", sans-serif; }
+  .act p { margin-top: 5px; font-size: clamp(.7rem, 1.05vw, .86rem); color: var(--sub); line-height: 1.55; }
+  .act p b { color: var(--ink); }
+
+  .tl { margin-top: var(--content-gap); display: flex; flex-direction: column;
+    gap: clamp(.4rem, 1.3vh, .8rem); }
+  .tli { display: grid; grid-template-columns: clamp(60px, 7.4vw, 90px) 1fr; gap: clamp(9px, 1.4vw, 16px); align-items: stretch; }
+  .tli .yr { font-family: "Archivo Black", sans-serif; color: var(--acc);
+    font-size: clamp(.95rem, 1.75vw, 1.3rem); letter-spacing: .02em; padding-top: clamp(5px, 1vh, 9px); }
+  .tli .tbox { background: var(--card); border-left: 3px solid var(--acc); border-radius: 0 10px 10px 0;
+    padding: clamp(7px, 1.4vh, 12px) clamp(13px, 1.6vw, 20px); }
+  .tli .tti { font-weight: 700; font-size: clamp(.9rem, 1.4vw, 1.08rem); }
+  .tli .tti span { color: var(--acc2); font-size: .8em; font-weight: 600; margin-left: 8px; }
+  .tli p { margin-top: 3px; font-size: clamp(.74rem, 1.12vw, .92rem); color: var(--sub); line-height: 1.55; }
+  .tli p b { color: var(--ink); }
+
+  /* 数字资产大数条 */
+  .bignums { margin-top: var(--content-gap); display: flex; flex-wrap: wrap; gap: clamp(8px, 1.4vw, 14px); }
+  .bn { flex: 1 1 150px; background: var(--card); border-radius: 10px; text-align: center;
+    padding: clamp(9px, 1.7vh, 15px) clamp(8px, 1vw, 12px); border-top: 3px solid var(--acc2); }
+  .bn .v { font-family: "Archivo Black", sans-serif; font-size: clamp(1.5rem, 3.2vw, 2.4rem);
+    color: var(--acc2); line-height: 1.05; }
+  .bn .k { margin-top: 3px; font-size: clamp(.66rem, .98vw, .8rem); color: var(--sub); line-height: 1.4; }
+  .bn .k b { color: var(--ink); }
+
+  .block { position: absolute; right: 0; top: 0; bottom: 0; width: clamp(90px, 18vw, 260px);
+    background: var(--acc); display: flex; align-items: center; justify-content: center; }
+  .block .word { writing-mode: vertical-rl; font-family: "Archivo Black", "Noto Sans SC", sans-serif;
+    font-size: clamp(.9rem, 2vw, 1.9rem); color: var(--bg); letter-spacing: .2em; font-weight: 900; }
+  .block .num { position: absolute; bottom: clamp(12px, 2.6vh, 30px); right: clamp(12px, 2vw, 24px);
+    font-family: "Archivo Black", sans-serif; font-size: clamp(2rem, 5.5vw, 4.6rem);
+    color: rgba(20,20,25,.22); line-height: 1; }
+  .cover-title { font-family: "Archivo Black", "Noto Sans SC", sans-serif; font-weight: 900;
+    font-size: clamp(2.2rem, 6.4vw, 5.4rem); line-height: 1.06; letter-spacing: -.01em;
+    margin-top: clamp(.6rem, 2vh, 1.2rem); }
+  .cover-title em { font-style: normal; color: var(--acc); }
+  .cover-sub { margin-top: clamp(.7rem, 2.2vh, 1.3rem); color: var(--sub);
+    font-size: clamp(.9rem, 1.6vw, 1.2rem); line-height: 1.75; }
+  .cover-sub b { color: var(--ink); }
+  .ring { position: absolute; right: clamp(70px, 20vw, 300px); bottom: -80px;
+    width: 240px; height: 240px; border-radius: 50%; border: 26px solid var(--card); }
+
+  .reveal { opacity: 0; transform: translateY(22px); }
+  .slide.visible .reveal { animation: rise .6s cubic-bezier(.2,.8,.25,1) forwards; }
+  .slide.visible .r1 { animation-delay: .05s; } .slide.visible .r2 { animation-delay: .17s; }
+  .slide.visible .r3 { animation-delay: .29s; } .slide.visible .r4 { animation-delay: .41s; }
+  .slide.visible .r5 { animation-delay: .53s; }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+
+  @media (max-height: 700px) {
+    :root { --slide-padding: clamp(.7rem, 2.8vw, 1.9rem); --title-size: clamp(1.3rem, 3vw, 2rem); }
+  }
+  @media (max-height: 600px) {
+    :root { --slide-padding: clamp(.5rem, 2.3vw, 1.4rem); --body-size: clamp(.74rem, 1.15vw, .9rem); }
+    #dots { display: none; }
+  }
+  @media (max-height: 500px) {
+    :root { --title-size: clamp(1rem, 2.8vw, 1.4rem); --body-size: clamp(.64rem, .95vw, .8rem); }
+    #dots, #counter { display: none; }
+  }
+  @media (max-width: 600px) {
+    .steps, .dgrid, .acts { grid-template-columns: 1fr; }
+    .acts { display: flex; flex-direction: column; }
+    .cols { grid-template-columns: 1fr; }
+    .block { display: none; }
+    .pt p { max-width: 100%; }
+    .bignums { flex-direction: column; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .2s !important; }
+    html { scroll-behavior: auto; }
+  }
+  @media print {
+    #progress, #dots, #counter { display: none; }
+    .slide { page-break-after: always; }
+    .reveal { opacity: 1; transform: none; }
+  }
+  html.capture .reveal { opacity: 1 !important; transform: none !important; animation: none !important; }
+  html.capture #progress, html.capture #dots, html.capture #counter { display: none; }
+</style>
+</head>
+<body>
+
+<div id="progress"></div>
+<aside id="dots" aria-label="幻灯片导航"></aside>
+<div id="counter">01 / 14</div>
+
+<!-- ============ 01 封面 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Learning Notes · pi-from-scratch · 2026</div>
+    <h1 class="cover-title reveal r2">从「会用」<br>到<em>「看懂」</em></h1>
+    <div class="cover-sub reveal r3"><b>我的 Agent Harness 学习心得——一次从疑问出发的学习实验</b><br>
+      一份 122 条的答疑日志 · 一遍从零到 100 测试全绿的手撕实现 · 三段生产源码精读</div>
+    <div class="fig reveal r4" style="max-width:900px">
+      <svg viewBox="0 0 900 106" role="img" aria-label="学习循环：疑问、调研、实现、精读、记录，循环往复">
+        <g font-family="Archivo,'Noto Sans SC',sans-serif" text-anchor="middle">
+          <path d="M 766 34 C 700 -6 160 -6 98 32" fill="none" stroke="#33333C" stroke-width="2" stroke-dasharray="5 5"/>
+          <polygon points="106,26 94,37 106,43" fill="#9C9AA3"/>
+          <text x="450" y="13" fill="#9C9AA3" font-size="15">↺ 每一轮都带着新问题回来</text>
+          <line x1="118" y1="66" x2="240" y2="66" stroke="#33333C" stroke-width="2"/><polygon points="240,61 251,66 240,71" fill="#FF5C1F"/>
+          <line x1="288" y1="66" x2="410" y2="66" stroke="#33333C" stroke-width="2"/><polygon points="410,61 421,66 410,71" fill="#FF5C1F"/>
+          <line x1="458" y1="66" x2="580" y2="66" stroke="#33333C" stroke-width="2"/><polygon points="580,61 591,66 580,71" fill="#FF5C1F"/>
+          <line x1="628" y1="66" x2="750" y2="66" stroke="#33333C" stroke-width="2"/><polygon points="750,61 761,66 750,71" fill="#FF5C1F"/>
+          <circle cx="90" cy="66" r="24" fill="#1D1D24" stroke="#FFC24B" stroke-width="2.5"/>
+          <text x="90" y="67" fill="#FFC24B" font-size="17" font-weight="700" dominant-baseline="middle">疑问</text>
+          <circle cx="260" cy="66" r="24" fill="#1D1D24" stroke="#FF5C1F" stroke-width="2"/>
+          <text x="260" y="67" fill="#F4F2ED" font-size="17" font-weight="700" dominant-baseline="middle">调研</text>
+          <circle cx="430" cy="66" r="24" fill="#1D1D24" stroke="#FF5C1F" stroke-width="2"/>
+          <text x="430" y="67" fill="#F4F2ED" font-size="17" font-weight="700" dominant-baseline="middle">实现</text>
+          <circle cx="600" cy="66" r="24" fill="#1D1D24" stroke="#FF5C1F" stroke-width="2"/>
+          <text x="600" y="67" fill="#F4F2ED" font-size="17" font-weight="700" dominant-baseline="middle">精读</text>
+          <circle cx="770" cy="66" r="24" fill="#1D1D24" stroke="#FF5C1F" stroke-width="2"/>
+          <text x="770" y="67" fill="#F4F2ED" font-size="17" font-weight="700" dominant-baseline="middle">记录</text>
+        </g>
+      </svg>
+      <div class="figcap"><b>学习的形状是个环</b>——记录产生新的疑问，环一直转。</div>
+    </div>
+    <div class="strip reveal r5">
+      <span class="sc"><b>起点</b> 一个疑问</span>
+      <span class="sc"><b>方法</b> 一套学习循环</span>
+      <span class="sc"><b>转变</b> 四个认知</span>
+      <span class="sc"><b>踩坑</b> 三个真实迭代</span>
+      <span class="sc"><b>沉淀</b> 三条哲学</span>
+    </div>
+  </div>
+  <div class="ring"></div>
+  <div class="block reveal r5"><div class="word">LEARNING · NOTES</div><div class="num">14</div></div>
+</section>
+
+<!-- ============ 02 叙事地图 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Roadmap · 心得结构</div>
+    <h2 class="reveal r2">四幕：一个学习者的<em>完整路径</em></h2>
+    <div class="pts"><div class="pt reveal r3"><p>技术会过时，<b>学习路径不会</b>。这份心得不按模块讲技术，按我认知改变的顺序讲：<b>为什么学 → 怎么学 → 想法怎么变的 → 错在哪、留下了什么</b>。</p></div></div>
+    <div class="fig reveal r3">
+      <svg viewBox="0 0 1200 92" role="img" aria-label="四幕旅程：起点、方法、转变、沉淀">
+        <g font-family="Archivo,'Noto Sans SC',sans-serif" text-anchor="middle">
+          <line x1="130" y1="52" x2="330" y2="52" stroke="#33333C" stroke-width="2"/><polygon points="330,47 341,52 330,57" fill="#FF5C1F"/>
+          <line x1="470" y1="52" x2="630" y2="52" stroke="#33333C" stroke-width="2"/><polygon points="630,47 641,52 630,57" fill="#FF5C1F"/>
+          <line x1="770" y1="52" x2="930" y2="52" stroke="#33333C" stroke-width="2"/><polygon points="930,47 941,52 930,57" fill="#FF5C1F"/>
+          <text x="150" y="22" fill="#FFC24B" font-size="14" letter-spacing="1">P3 – P4</text>
+          <text x="470" y="22" fill="#FFC24B" font-size="14" letter-spacing="1">P5 – P7</text>
+          <text x="790" y="22" fill="#FFC24B" font-size="14" letter-spacing="1">P8 – P11</text>
+          <text x="1070" y="22" fill="#FFC24B" font-size="14" letter-spacing="1">P12 – P15</text>
+          <rect x="50" y="32" width="200" height="40" rx="10" fill="#1D1D24" stroke="#FFC24B" stroke-width="2"/>
+          <text x="150" y="53" fill="#F4F2ED" font-size="17" font-weight="700" dominant-baseline="middle">起点 · 一个问题</text>
+          <rect x="370" y="32" width="200" height="40" rx="10" fill="#1D1D24" stroke="#FF5C1F" stroke-width="2"/>
+          <text x="470" y="53" fill="#F4F2ED" font-size="17" font-weight="700" dominant-baseline="middle">方法 · 学习循环</text>
+          <rect x="690" y="32" width="200" height="40" rx="10" fill="#1D1D24" stroke="#FF5C1F" stroke-width="2"/>
+          <text x="790" y="53" fill="#F4F2ED" font-size="17" font-weight="700" dominant-baseline="middle">转变 · 四个认知</text>
+          <rect x="980" y="32" width="200" height="40" rx="10" fill="#1D1D24" stroke="#FF5C1F" stroke-width="2"/>
+          <text x="1080" y="53" fill="#F4F2ED" font-size="17" font-weight="700" dominant-baseline="middle">沉淀 · 坑与哲学</text>
+        </g>
+      </svg>
+    </div>
+    <div class="acts reveal r4">
+      <div class="act"><div class="an">ACT 1<span class="rng">P3 – P4</span></div>
+        <div class="att">引子与起点 · 一句话变成一个问题</div>
+        <p>先看一条<b>真实的执行轨迹</b>：一句话需求如何一步步变成一份 docx；再回到三个使用场景的对比，逼出疑问：<b>差距不在模型，在哪？</b></p></div>
+      <div class="act"><div class="an">ACT 2<span class="rng">P5 – P7</span></div>
+        <div class="att">方法 · 一套可复用的学习循环</div>
+        <p><b>调研先行 → 亲手实现 → 精读对照</b>三步循环，加上「<b>先写问题再写方案</b>」的日志制度——122 条记录与<b>三个开源代码库</b>的精读，是这次学习真正的资产。</p></div>
+      <div class="act"><div class="an">ACT 3<span class="rng">P8 – P11</span></div>
+        <div class="att">转变 · 四个认知的 before / after</div>
+        <p><b>模型能力→工程能力；容器→预算；异常→信号；提示词→不是安全边界</b>。每一个都有文献印证和自己的代码印证。</p></div>
+      <div class="act"><div class="an">ACT 4<span class="rng">P12 – P15</span></div>
+        <div class="att">沉淀 · 坑、哲学与我的变化</div>
+        <p>三个真实的踩坑迭代；从生产源码学到、又被自己印证的<b>三条设计哲学</b>；以及学完之后，<b>我用 AI 和看 AI 产品的方式变了</b>。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 03 引子：一句话的执行轨迹 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">ACT 1 · 引子 · 一条真实的执行轨迹</div>
+    <h2 class="reveal r2">一句话进，<em>一份 docx</em> 出——中间发生了什么？</h2>
+    <div class="ask reveal r3"><span class="u">❯ 用户输入</span>请你根据本项目的实际情况来生成测试用例，并一一进行测试，并把最终测试结果以 docx 文件的形式存放在本目录下</div>
+    <div class="tl reveal r4">
+      <div class="tli"><div class="yr">轮 1</div><div class="tbox">
+        <div class="tti">摸清「实际情况」<span>感知回填</span></div>
+        <p>模型先调 <b>read / glob</b>：读 package.json、AGENTS.md、src/ 九个模块、已有 100 个用例——工具结果喂回上下文，「项目实况」在上下文里长出来。</p></div></div>
+      <div class="tli"><div class="yr">轮 2</div><div class="tbox">
+        <div class="tti">定用例清单<span>待办整表替换</span></div>
+        <p>对照模块职责列清单：token 估算边界、切点三规则、配对安全、skills 匹配、审批拦截……<b>写入待办工具</b>，计划贴在上下文尾部。</p></div></div>
+      <div class="tli"><div class="yr">轮 3+</div><div class="tbox">
+        <div class="tti">写一个、跑一个<span>错误是信号 · 超时兜底</span></div>
+        <p><b>write</b> 新测试文件 → <b>bash</b> 跑 <code>npm test</code>（vitest run）→ 失败输出作为结构化错误回填 → 模型自纠再跑，直到全绿。</p></div></div>
+      <div class="tli"><div class="yr">中途</div><div class="tbox">
+        <div class="tti">上下文到 80%<span>压缩红线</span></div>
+        <p>轮次一多预算吃紧：旧轮次压成一段摘要，任务与清单不丢；<b>压缩失败则保留原文</b>，绝不带病替换。</p></div></div>
+      <div class="tli"><div class="yr">过闸</div><div class="tbox">
+        <div class="tti">生成 docx 之前<span>四道防线</span></div>
+        <p>要写脚本、跑命令：<b>先审批放行</b>；敏感路径直接拦截并告知原因；输出里的密钥形态打码后才进上下文。</p></div></div>
+      <div class="tli"><div class="yr">交付</div><div class="tbox">
+        <div class="tti">报告落盘<span>停止条件 · 逐轮落账</span></div>
+        <p><b>write</b> 生成脚本 → <b>bash</b> 运行 → 测试结果 .docx 出现在本目录 → 模型判定任务完成，循环停止——全程每轮已写进会话日志。</p></div></div>
+    </div>
+    <div class="banner reveal r5">你只说了一句话——中间几十轮「读 · 写 · 跑 · 错 · 改 · 压 · 记」，是 harness 在替你转。
+      <small>这六行里的每一个机制，后面的页都有一页专门讲它——整个 deck 就是这条轨迹的展开。</small></div>
+  </div>
+</section>
+
+<!-- ============ 04 起点 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">ACT 1 · 起点</div>
+    <h2 class="reveal r2">一个问题，把我带进了 harness</h2>
+    <div class="dgrid reveal r3">
+      <div class="dc"><div class="dt"><span>场景一</span>Coze 平台</div>
+        <p>拖拽搭工作流 → 发布 → 把工作流 API 集成到沙盒与 code agent 开发的网站里做数据展示。<b>平台把「能跑」给了我，但里面是什么，完全黑盒。</b></p></div>
+      <div class="dc"><div class="dt"><span>场景二</span>Claude Code</div>
+        <p>日常只说一句话的需求，agent 通过一系列 harness 工程直接<b>交付一个成熟项目</b>——读文件、改代码、跑测试、自己修错。</p></div>
+      <div class="dc"><div class="dt"><span>场景三</span>豆包 / ChatGPT</div>
+        <p>同样一代大模型的聊天界面：<b>能说，不能做</b>。给不了文件系统，跑不了命令，交付不了项目。</p></div>
+      <div class="dc after"><div class="dt"><span>疑问</span>差距到底在哪？</div>
+        <p>三个场景用的可能是<b>同一家实验室的模型</b>——差距显然不在模型，在模型外面那层工程。<b>那层工程叫 harness，我决定从零手撕一个看清它。</b></p></div>
+    </div>
+    <div class="fig reveal r4">
+      <svg viewBox="0 0 1200 190" role="img" aria-label="同一个模型的三种外壳：聊天AI、Coze工作流、Claude Code harness">
+        <g font-family="Archivo,'Noto Sans SC',sans-serif" text-anchor="middle">
+          <rect x="20" y="10" width="360" height="168" rx="12" fill="#17171C" stroke="#33333C"/>
+          <rect x="420" y="10" width="360" height="168" rx="12" fill="#17171C" stroke="#33333C"/>
+          <rect x="820" y="10" width="360" height="168" rx="12" fill="#17171C" stroke="#FF5C1F" stroke-width="1.5"/>
+          <text x="200" y="38" fill="#F4F2ED" font-size="18" font-weight="700">① 聊天 AI</text>
+          <text x="600" y="38" fill="#F4F2ED" font-size="18" font-weight="700">② Coze 工作流</text>
+          <text x="1000" y="38" fill="#F4F2ED" font-size="16" font-weight="700">③ Claude Code · harness</text>
+          <rect x="150" y="54" width="100" height="34" rx="8" fill="#23232B" stroke="#9C9AA3"/>
+          <text x="200" y="71" fill="#9C9AA3" font-size="16" font-weight="700">LLM</text>
+          <rect x="96" y="116" width="80" height="26" rx="9" fill="#23232B" stroke="#9C9AA3"/>
+          <rect x="224" y="116" width="80" height="26" rx="9" fill="#1D1D24" stroke="#33333C"/>
+          <circle cx="330" cy="129" r="13" fill="none" stroke="#FF5C1F" stroke-dasharray="3 3"/>
+          <line x1="324" y1="123" x2="336" y2="135" stroke="#FF5C1F" stroke-width="2"/>
+          <line x1="336" y1="123" x2="324" y2="135" stroke="#FF5C1F" stroke-width="2"/>
+          <text x="200" y="170" fill="#9C9AA3" font-size="14">能说，不能做</text>
+          <rect x="470" y="54" width="100" height="34" rx="8" fill="#23232B" stroke="#9C9AA3"/>
+          <text x="520" y="71" fill="#9C9AA3" font-size="16" font-weight="700">LLM</text>
+          <line x1="570" y1="71" x2="606" y2="71" stroke="#33333C" stroke-width="2"/><polygon points="606,66 616,71 606,76" fill="#9C9AA3"/>
+          <rect x="618" y="58" width="26" height="26" rx="5" fill="#23232B" stroke="#33333C"/>
+          <line x1="644" y1="71" x2="664" y2="71" stroke="#33333C" stroke-width="2"/><polygon points="664,66 674,71 664,76" fill="#9C9AA3"/>
+          <rect x="676" y="58" width="26" height="26" rx="5" fill="#23232B" stroke="#33333C"/>
+          <line x1="702" y1="71" x2="722" y2="71" stroke="#33333C" stroke-width="2"/><polygon points="722,66 732,71 722,76" fill="#9C9AA3"/>
+          <rect x="734" y="58" width="26" height="26" rx="5" fill="#23232B" stroke="#33333C"/>
+          <text x="672" y="102" fill="#9C9AA3" font-size="12">定式节点，人工编排</text>
+          <text x="600" y="170" fill="#9C9AA3" font-size="14">能跑，但是定式（黑盒）</text>
+          <rect x="870" y="54" width="100" height="34" rx="8" fill="#23232B" stroke="#9C9AA3"/>
+          <text x="920" y="71" fill="#9C9AA3" font-size="16" font-weight="700">LLM</text>
+          <path d="M 1005 44 A 26 26 0 1 1 980 57" fill="none" stroke="#FF5C1F" stroke-width="2.5"/>
+          <polygon points="975,49 988,52 981,63" fill="#FF5C1F"/>
+          <line x1="990" y1="90" x2="892" y2="118" stroke="#33333C" stroke-width="1.5" stroke-dasharray="4 4"/>
+          <line x1="1012" y1="90" x2="1068" y2="118" stroke="#33333C" stroke-width="1.5" stroke-dasharray="4 4"/>
+          <rect x="856" y="118" width="36" height="26" rx="5" fill="none" stroke="#FFC24B" stroke-width="2"/>
+          <text x="874" y="135" fill="#FFC24B" font-size="12" font-weight="700">sh</text>
+          <rect x="1058" y="118" width="44" height="26" rx="5" fill="none" stroke="#FFC24B" stroke-width="2"/>
+          <text x="1080" y="135" fill="#FFC24B" font-size="12" font-weight="700">write</text>
+          <text x="1000" y="170" fill="#FFC24B" font-size="14">能做，且自适应（白盒）</text>
+        </g>
+      </svg>
+      <div class="figcap"><b>同一个模型，三种外壳</b>——差距不在 LLM，在外壳；harness 把「①的对话」和「②的执行」组合起来，还加上了自适应的循环。</div>
+    </div>
+    <div class="banner reveal r4">同一个时代的大模型，为什么有的只能聊天，有的能交付项目？
+      <small>这个问题就是全部的起点——后面的一切，都是在回答它。</small></div>
+  </div>
+</section>
+
+<!-- ============ 04 方法：学习循环 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">ACT 2 · 方法（上）</div>
+    <h2 class="reveal r2">我怎么学：<em>三步循环</em>，而不是看教程</h2>
+    <div class="fig reveal r3">
+      <svg viewBox="0 0 1200 132" role="img" aria-label="三步学习循环：调研、实现、精读，带着新问题回到调研">
+        <g font-family="Archivo,'Noto Sans SC',sans-serif" text-anchor="middle">
+          <path d="M 1000 38 C 850 -10 350 -10 208 36" fill="none" stroke="#FFC24B" stroke-width="2" stroke-dasharray="6 5"/>
+          <polygon points="216,28 202,40 216,46" fill="#FFC24B"/>
+          <text x="600" y="12" fill="#FFC24B" font-size="15">精读发现的新问题 → 回到调研 ↺</text>
+          <line x1="330" y1="74" x2="464" y2="74" stroke="#33333C" stroke-width="2"/><polygon points="464,69 475,74 464,79" fill="#FF5C1F"/>
+          <line x1="730" y1="74" x2="864" y2="74" stroke="#33333C" stroke-width="2"/><polygon points="864,69 875,74 864,79" fill="#FF5C1F"/>
+          <text x="400" y="58" fill="#9C9AA3" font-size="13">带着共识动手</text>
+          <text x="800" y="58" fill="#9C9AA3" font-size="13">拿着实现对照</text>
+          <rect x="80" y="48" width="240" height="52" rx="11" fill="#1D1D24" stroke="#FF5C1F" stroke-width="2"/>
+          <text x="200" y="75" fill="#F4F2ED" font-size="19" font-weight="700" dominant-baseline="middle">调研 · 定共识</text>
+          <rect x="480" y="48" width="240" height="52" rx="11" fill="#1D1D24" stroke="#FF5C1F" stroke-width="2"/>
+          <text x="600" y="75" fill="#F4F2ED" font-size="19" font-weight="700" dominant-baseline="middle">实现 · 写代码</text>
+          <rect x="880" y="48" width="240" height="52" rx="11" fill="#1D1D24" stroke="#FF5C1F" stroke-width="2"/>
+          <text x="1000" y="75" fill="#F4F2ED" font-size="19" font-weight="700" dominant-baseline="middle">精读 · 对答案</text>
+          <text x="600" y="122" fill="#9C9AA3" font-size="14">不是流水线——三步转很多轮，每一轮的输入都比上一轮多一个问题</text>
+        </g>
+      </svg>
+    </div>
+    <div class="steps reveal r3">
+      <div class="step"><div class="sn">STEP 1</div><div class="stt">调研先行</div>
+        <p>动手前先读 <b>12 篇论文与工程报告</b>（ReAct、Voyager、SWE-agent、Anthropic 工程指南…），把业界共识定成「应然」——<span class="lab">不带偏见地动手</span>，每写一个功能都知道它在文献里对应什么。</p></div>
+      <div class="step"><div class="sn">STEP 2</div><div class="stt">亲手实现</div>
+        <p>没有教程可抄——<b>每个功能先自己想方案、再写代码、最后补单测</b>。9 个模块 ~1,800 行，100 个测试全绿。<span class="lab">别人的代码看十遍，不如自己的代码跑一遍。</span></p></div>
+      <div class="step"><div class="sn">STEP 3</div><div class="stt">精读对照</div>
+        <p>拿自己的实现去对照两个真实项目：<b>pi</b>（完整版目标形态）与 <b>deepseek-harness</b>（生产级制度），整理 19 条源码答疑——<span class="lab">校验自己的取舍，也看清差距</span>。</p></div>
+    </div>
+    <div class="pts reveal r4">
+      <div class="pt"><span class="no">▸</span><p><b>参考真实项目，而不是参考教程</b>——教程教的是「怎么做」，真实项目回答的是「为什么这么做、不这么做会死在哪」。</p></div>
+      <div class="pt"><span class="no">▸</span><p><b>小步快跑</b>：按 P1 上下文 → P2 工具 → P3 工程地基 → P5 生态的顺序，每个阶段都是能跑、能测、能演示的完整状态。</p></div>
+    </div>
+    <div class="strip reveal r5">
+      <span class="sc hot"><b>12 篇</b> 文献定共识</span>
+      <span class="sc hot"><b>~1,800 行</b> 亲手实现</span>
+      <span class="sc hot"><b>2 个</b> 生产项目精读</span>
+      <span class="sc"><b>原则</b> 可读性优先于抽象，核心循环一屏读完</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 05 方法：日志制度 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">ACT 2 · 方法（下）</div>
+    <h2 class="reveal r2">答疑日志：<em>学习本身</em>，而不是学习的副产品</h2>
+    <div class="pts reveal r3">
+      <div class="pt"><span class="no">01</span><p><b>制度</b>：每个功能动手之前，先把「<b>问题 + 方案</b>」写进 <code>docs/答疑日志.md</code>，与自己对齐后才写代码；实现完再补「<b>取舍</b>」——为什么选这个、放弃那个。</p></div>
+      <div class="pt"><span class="no">02</span><p><b>决策可回溯</b>：三个月后翻日志，能还原当时每一个决定的原因——代码只告诉你「是什么」，日志告诉你「为什么」。</p></div>
+      <div class="pt"><span class="no">03</span><p><b>错误可见</b>：第一版的缺陷（比如 Skills 关键词匹配的三个坑）原样留在日志里——<b>它们是后续迭代的依据，也是这次汇报最真实的素材。</b></p></div>
+      <div class="pt"><span class="no">04</span><p><b>意外收获</b>：给领导的问题驱动式汇报、给团队的技术 deck，素材全部直接来自日志——<b>记录做得好，表达是免费的</b>。</p></div>
+    </div>
+    <div class="fig reveal r3">
+      <svg viewBox="0 0 1200 118" role="img" aria-label="入档流程：问题、方案、代码、取舍补录，只追加进日志">
+        <g font-family="Archivo,'Noto Sans SC',sans-serif" text-anchor="middle">
+          <line x1="290" y1="40" x2="344" y2="40" stroke="#33333C" stroke-width="2"/><polygon points="344,35 355,40 344,45" fill="#FF5C1F"/>
+          <line x1="580" y1="40" x2="634" y2="40" stroke="#33333C" stroke-width="2"/><polygon points="634,35 645,40 634,45" fill="#FF5C1F"/>
+          <line x1="870" y1="40" x2="924" y2="40" stroke="#33333C" stroke-width="2"/><polygon points="924,35 935,40 924,45" fill="#FF5C1F"/>
+          <text x="320" y="24" fill="#9C9AA3" font-size="13">先对齐</text>
+          <text x="610" y="24" fill="#9C9AA3" font-size="13">才动手</text>
+          <text x="900" y="24" fill="#9C9AA3" font-size="13">实现后回填</text>
+          <rect x="65" y="18" width="210" height="44" rx="10" fill="#1D1D24" stroke="#FF5C1F" stroke-width="2"/>
+          <text x="170" y="41" fill="#F4F2ED" font-size="18" font-weight="700" dominant-baseline="middle">① 问题</text>
+          <rect x="355" y="18" width="210" height="44" rx="10" fill="#1D1D24" stroke="#FF5C1F" stroke-width="2"/>
+          <text x="460" y="41" fill="#F4F2ED" font-size="18" font-weight="700" dominant-baseline="middle">② 方案</text>
+          <rect x="645" y="18" width="210" height="44" rx="10" fill="#1D1D24" stroke="#FF5C1F" stroke-width="2"/>
+          <text x="750" y="41" fill="#F4F2ED" font-size="18" font-weight="700" dominant-baseline="middle">③ 代码</text>
+          <rect x="935" y="18" width="210" height="44" rx="10" fill="#1D1D24" stroke="#FFC24B" stroke-width="2"/>
+          <text x="1040" y="41" fill="#FFC24B" font-size="18" font-weight="700" dominant-baseline="middle">④ 取舍补录</text>
+          <line x1="170" y1="62" x2="170" y2="74" stroke="#33333C" stroke-width="1.5" stroke-dasharray="3 3"/>
+          <line x1="460" y1="62" x2="460" y2="74" stroke="#33333C" stroke-width="1.5" stroke-dasharray="3 3"/>
+          <line x1="750" y1="62" x2="750" y2="74" stroke="#33333C" stroke-width="1.5" stroke-dasharray="3 3"/>
+          <line x1="1040" y1="62" x2="1040" y2="74" stroke="#33333C" stroke-width="1.5" stroke-dasharray="3 3"/>
+          <rect x="40" y="74" width="1120" height="34" rx="8" fill="#141419" stroke="#33333C"/>
+          <text x="64" y="91" fill="#9C9AA3" font-size="15" text-anchor="start" font-family="Archivo,monospace">docs/答疑日志.md</text>
+          <text x="1136" y="91" fill="#FFC24B" font-size="15" text-anchor="end">↧ 只追加 · 122 条</text>
+        </g>
+      </svg>
+      <div class="figcap"><b>制度的形状</b>：每个功能先入档再动手——日志跟着代码一起长，从不回改。</div>
+    </div>
+    <div class="bignums reveal r4">
+      <div class="bn"><div class="v">122</div><div class="k"><b>条</b>问题与方案记录</div></div>
+      <div class="bn"><div class="v">48</div><div class="k"><b>个</b>功能实现条目</div></div>
+      <div class="bn"><div class="v">74</div><div class="k"><b>条</b>源码答疑追问</div></div>
+      <div class="bn"><div class="v">100</div><div class="k"><b>个</b>单元测试全绿</div></div>
+    </div>
+    <div class="banner reveal r5">代码是学习的结果，日志才是学习本身。
+      <small>这份 deck 里所有的「心得」，本质上都是日志里某一条的展开。</small></div>
+  </div>
+</section>
+
+<!-- ============ 07 读源码：三个开源代码库 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">ACT 2 · 方法（延伸）· 精读开源代码库</div>
+    <h2 class="reveal r2">三个代码库，<em>三种读法</em></h2>
+    <div class="dgrid cols3 reveal r3">
+      <div class="dc"><div class="dt"><span>精读 · 制度</span>deepseek-harness</div>
+        <p>DeepSeek 官方的生产级插件式 harness，我带着 <b>19 个架构问题</b>逐条追问：压缩管线（头锚定 + 尾部保留 + tool 配对完整才切）、剪枝（超长结果只留头 4096 尾 1024）、session / surface（log 唯一权威）、skills、plan、subagent / workflow。</p>
+        <p class="tk"><b>最打动我</b>：摘要不比原文短，就<b>拒绝压缩</b>——教科书不会写的防御细节。</p></div>
+      <div class="dc"><div class="dt"><span>对照 · 目标形态</span>pi</div>
+        <p>教学版就是从它做减法。<b>9 处源码对照</b>入日志：两层重试（按状态码 / 错误消息分类）、停止回调、ToolResultMessage 独立 role、Anthropic 协议转换、StreamFn 注入、skills 纯指令渐进披露。</p>
+        <p class="tk"><b>最打动我</b>：<b>StreamFn 失败不 throw、编码进事件流</b>——我的 llm.ts 双后端照此设计。</p></div>
+      <div class="dc"><div class="dt"><span>储备 · 编排视野</span>orca</div>
+        <p>~3000 文件的单体 Electron 仓库，按「进程模型 → 编排 5 层 → agent 管理 → CLI」路线读：30+ agent 类型注册、OSC 标题识别状态、PTY 三种后端；整理出架构与编排<b>两份笔记</b>。</p>
+        <p class="tk"><b>最打动我</b>：任务 DAG · 决策门 · worker_done / escalation——正是我 <b>P6 编排层的图纸</b>；它的 AGENTS / STYLEGUIDE 写法，直接启发了本项目的规则制度。</p></div>
+    </div>
+    <div class="fig reveal r4">
+      <svg viewBox="0 0 1200 158" role="img" aria-label="三个开源库分别映射到 pi-from-scratch 的模块">
+        <g font-family="Archivo,'Noto Sans SC',sans-serif" text-anchor="middle">
+          <rect x="25" y="6" width="350" height="48" rx="10" fill="#1D1D24" stroke="#FF5C1F" stroke-width="2"/>
+          <text x="200" y="27" fill="#F4F2ED" font-size="17" font-weight="700">deepseek-harness</text>
+          <text x="200" y="45" fill="#9C9AA3" font-size="12.5">压缩 · 剪枝 · session · skills · plan</text>
+          <rect x="425" y="6" width="350" height="48" rx="10" fill="#1D1D24" stroke="#FF5C1F" stroke-width="2"/>
+          <text x="600" y="27" fill="#F4F2ED" font-size="17" font-weight="700">pi</text>
+          <text x="600" y="45" fill="#9C9AA3" font-size="12.5">重试 · 消息类型 · StreamFn · skills</text>
+          <rect x="825" y="6" width="350" height="48" rx="10" fill="#1D1D24" stroke="#FF5C1F" stroke-width="2"/>
+          <text x="1000" y="27" fill="#F4F2ED" font-size="17" font-weight="700">orca</text>
+          <text x="1000" y="45" fill="#9C9AA3" font-size="12.5">编排 · 规范文档 · 工程组织</text>
+          <line x1="200" y1="54" x2="200" y2="66" stroke="#33333C" stroke-width="2"/><polygon points="195,66 205,66 200,76" fill="#FF5C1F"/>
+          <line x1="600" y1="54" x2="600" y2="66" stroke="#33333C" stroke-width="2"/><polygon points="595,66 605,66 600,76" fill="#FF5C1F"/>
+          <line x1="1000" y1="54" x2="1000" y2="66" stroke="#33333C" stroke-width="2"/><polygon points="995,66 1005,66 1000,76" fill="#FF5C1F"/>
+          <rect x="25" y="78" width="350" height="30" rx="8" fill="#17171C" stroke="#33333C"/>
+          <text x="200" y="97" fill="#FFC24B" font-size="13.5">→ context-management / agent（压缩红线）</text>
+          <rect x="425" y="78" width="350" height="30" rx="8" fill="#17171C" stroke="#33333C"/>
+          <text x="600" y="97" fill="#FFC24B" font-size="13.5">→ llm / cli（双后端 · 重试 · 注入）</text>
+          <rect x="825" y="78" width="350" height="30" rx="8" fill="#17171C" stroke="#33333C"/>
+          <text x="1000" y="97" fill="#FFC24B" font-size="13.5">→ AGENTS.md 制度 + P6 图纸</text>
+          <rect x="150" y="120" width="900" height="34" rx="8" fill="#141419" stroke="#FFC24B"/>
+          <text x="600" y="141" fill="#F4F2ED" font-size="15.5" font-weight="700">pi-from-scratch · 9 个模块 ~1,800 行——每个模块都能指出它从哪学来</text>
+        </g>
+      </svg>
+      <div class="figcap"><b>读法落到代码</b>：三个库各取一瓢——制度、形态、视野，全部沉进 9 个模块。</div>
+    </div>
+    <div class="bignums reveal r4">
+      <div class="bn"><div class="v">19</div><div class="k"><b>条</b>架构答疑（deepseek-harness）</div></div>
+      <div class="bn"><div class="v">9</div><div class="k"><b>处</b>源码对照（pi）</div></div>
+      <div class="bn"><div class="v">2</div><div class="k"><b>份</b>架构笔记（orca）</div></div>
+      <div class="bn"><div class="v">3</div><div class="k"><b>个</b>层次：制度 · 形态 · 视野</div></div>
+    </div>
+    <div class="banner reveal r5">不是「看过」，是「带着问题逐条追问过」。
+      <small>汇报一句话：deepseek-harness 精读制度，pi 对照目标形态，orca 储备编排视野——规则只有一条：实现每个新功能前，先读参考项目的对应实现，再写适配方案，不凭直觉直接写。</small></div>
+  </div>
+</section>
+
+<!-- ============ 06 转变① ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">ACT 3 · 转变 1 / 4</div>
+    <h2 class="reveal r2"><s>模型能力</s> → <em>工程能力</em></h2>
+    <div class="dgrid reveal r3">
+      <div class="dc before"><div class="dchead">
+        <svg width="96" height="36" viewBox="0 0 96 36" aria-hidden="true">
+          <rect x="4" y="4" width="40" height="22" rx="8" fill="#23232B" stroke="#9C9AA3" stroke-width="1.5"/>
+          <rect x="26" y="12" width="40" height="22" rx="8" fill="#1D1D24" stroke="#33333C" stroke-width="1.5"/>
+          <circle cx="80" cy="17" r="11" fill="none" stroke="#FF5C1F" stroke-width="1.5" stroke-dasharray="3 3"/>
+          <line x1="75" y1="12" x2="85" y2="22" stroke="#FF5C1F" stroke-width="2"/>
+          <line x1="85" y1="12" x2="75" y2="22" stroke="#FF5C1F" stroke-width="2"/>
+        </svg>
+        <div class="dt"><span>以前我以为</span></div></div>
+        <p>产品强不强，取决于<b>模型聪不聪明</b>；prompt 写得好就是核心竞争力；换个更新的模型，一切问题都会消失。</p></div>
+      <div class="dc after"><div class="dchead">
+        <svg width="96" height="36" viewBox="0 0 96 36" aria-hidden="true">
+          <path d="M 30 32 A 15 15 0 1 1 46 28" fill="none" stroke="#FF5C1F" stroke-width="2.5"/>
+          <polygon points="41,21 52,26 43,34" fill="#FF5C1F"/>
+          <rect x="8" y="22" width="11" height="11" fill="#FFC24B"/>
+          <rect x="66" y="22" width="11" height="11" fill="none" stroke="#9C9AA3" stroke-width="2"/>
+          <rect x="80" y="22" width="11" height="11" fill="none" stroke="#9C9AA3" stroke-width="2"/>
+        </svg>
+        <div class="dt"><span>现在我知道</span></div></div>
+        <p>同一个模型，裸 API 只能聊天；装进 <b>循环 + 工具 + 上下文管理</b>就能交付项目。Anthropic 的定义一针见血：<b>「agent = 在循环中自主使用工具的 LLM」</b>——重心全在工程那半句。</p></div>
+    </div>
+    <div class="pts reveal r4">
+      <div class="pt"><span class="no">▸</span><p><b>自己的印证</b>：我 318 行的核心模块里没有一行「智能」——全是 while 循环、消息配对、token 预算、超时兜底。<b>智能全部来自模型，价值大量来自工程。</b></p></div>
+      <div class="pt"><span class="no">▸</span><p><b>工程决定下限也决定上限</b>：死循环检测、失败不炸循环、恢复不报 400——模型再聪明，没有这些制度也跑不完一个真实任务。</p></div>
+    </div>
+    <div class="strip reveal r5">
+      <span class="sc"><b>文献印证</b> ReAct 2022 · Anthropic Building Effective Agents</span>
+      <span class="sc hot"><b>代码印证</b> src/agent.ts —— 一个 while 循环是整个项目的灵魂</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 07 转变② ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">ACT 3 · 转变 2 / 4</div>
+    <h2 class="reveal r2">上下文：<s>容器</s> → <em>预算</em></h2>
+    <div class="dgrid reveal r3">
+      <div class="dc before"><div class="dt"><span>以前我以为</span></div>
+        <p>上下文就是聊天记录，<b>越大越好、塞满为止</b>；模型「记得」所有说过的话；超窗了是大模型的锅。</p></div>
+      <div class="dc after"><div class="dt"><span>现在我知道</span></div>
+        <p>上下文是<b>稀缺资源</b>，要像预算一样经营：token 越多注意力越稀（<b>context rot</b>），目标是「<b>最小的高信号集合</b>」——每个 token 都要挣自己的位置。</p></div>
+    </div>
+    <div class="pts reveal r4">
+      <div class="pt"><span class="no">▸</span><p><b>经营手段是一套制度</b>：用量到 80% 提前动手（绝不打满）→ 找安全切点（消息边界、不切工具配对、整轮对齐）→ 摘要替换（有损，所以失败时保留原文）。</p></div>
+      <div class="pt"><span class="no">▸</span><p><b>预算思维甚至管到缓存</b>：deepseek 的前缀纪律——固定段落顺序、工具 schema 稳定——让摘要请求复用 KV 缓存，<b>省上下文也是省钱的工程</b>。</p></div>
+      <div class="pt"><span class="no">▸</span><p><b>自己的印证</b>：压缩模块 14 个单测全在打边界——切点切错一处，会话恢复直接被 API 拒绝。</p></div>
+    </div>
+    <div class="fig reveal r4">
+      <svg viewBox="0 0 1200 148" role="img" aria-label="上下文预算条：system常驻、旧对话可摘要、工具结果、余量，80%动手线">
+        <g font-family="Archivo,'Noto Sans SC',sans-serif" text-anchor="middle">
+          <line x1="936" y1="16" x2="936" y2="86" stroke="#FF5C1F" stroke-width="2" stroke-dasharray="5 4"/>
+          <text x="936" y="12" fill="#FF5C1F" font-size="14" font-weight="700">80% 动手线</text>
+          <rect x="40" y="30" width="1120" height="52" rx="9" fill="#17171C" stroke="#33333C"/>
+          <rect x="46" y="36" width="98" height="40" fill="#23232B"/>
+          <text x="95" y="57" fill="#9C9AA3" font-size="13">system</text>
+          <rect x="148" y="36" width="430" height="40" fill="#26262E"/>
+          <text x="363" y="57" fill="#C9C7CE" font-size="15">历史对话（旧轮次）</text>
+          <rect x="582" y="36" width="330" height="40" fill="#2A2A33"/>
+          <text x="747" y="57" fill="#C9C7CE" font-size="15">工具结果</text>
+          <rect x="920" y="36" width="234" height="40" fill="none" stroke="#33333C" stroke-dasharray="4 4"/>
+          <text x="1036" y="57" fill="#9C9AA3" font-size="14">余量</text>
+          <line x1="363" y1="82" x2="363" y2="102" stroke="#FFC24B" stroke-width="2"/><polygon points="358,100 363,110 368,100" fill="#FFC24B"/>
+          <rect x="253" y="112" width="220" height="30" rx="8" fill="#1D1D24" stroke="#FFC24B"/>
+          <text x="363" y="128" fill="#FFC24B" font-size="15" font-weight="700" dominant-baseline="middle">摘要（一段）</text>
+          <text x="700" y="128" fill="#9C9AA3" font-size="14" text-anchor="start">替换旧轮次，腾出预算；压缩失败 → 保留原文（红线）</text>
+        </g>
+      </svg>
+      <div class="figcap"><b>窗口是预算</b>：system 常驻，旧对话可被摘要替换，到 80% 就动手，绝不打满。</div>
+    </div>
+    <div class="strip reveal r5">
+      <span class="sc"><b>文献印证</b> Anthropic Context Engineering</span>
+      <span class="sc hot"><b>代码印证</b> context-management.ts · deepseek prune 8192</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 08 转变③ ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">ACT 3 · 转变 3 / 4</div>
+    <h2 class="reveal r2">错误：<s>异常</s> → <em>信号</em></h2>
+    <div class="dgrid reveal r3">
+      <div class="dc before"><div class="dt"><span>以前我以为</span></div>
+        <p>出错等于失败：<b>抛异常、崩掉、给人看堆栈</b>；错误越多说明程序越烂，目标是消灭错误。</p></div>
+      <div class="dc after"><div class="dt"><span>现在我知道</span></div>
+        <p>在 agent 里，错误是<b>喂回模型的信号</b>：结构化地说清「哪个字段、什么问题、怎么错的」，<b>模型下一轮自己纠正</b>——大多数错误在循环内部就被消化了。</p></div>
+    </div>
+    <div class="pts reveal r4">
+      <div class="pt"><span class="no">▸</span><p><b>失败不炸循环</b>：工具错误、网络错误一律编码进事件流的 error 通道，循环永不因异常崩溃；限流与服务器错误做指数退避重试。</p></div>
+      <div class="pt"><span class="no">▸</span><p><b>「卡住」也是错误的一种</b>：每个工具带超时（读 10s / 搜 15s / 命令 30s），连续三次同指纹调用判定死循环强制停下——<b>失控被制度接管，而不是靠运气</b>。</p></div>
+      <div class="pt"><span class="no">▸</span><p><b>SWE-agent 的印证</b>：好的接口把错误信息设计成模型可读的反馈，agent 的自纠率是设计出来的，不是碰出来的。</p></div>
+    </div>
+    <div class="fig reveal r4">
+      <svg viewBox="0 0 1200 128" role="img" aria-label="错误信号回路：工具失败变成结构化错误，回填给模型自纠">
+        <g font-family="Archivo,'Noto Sans SC',sans-serif" text-anchor="middle">
+          <line x1="250" y1="44" x2="414" y2="44" stroke="#33333C" stroke-width="2"/><polygon points="414,39 425,44 414,49" fill="#FF5C1F"/>
+          <text x="330" y="30" fill="#9C9AA3" font-size="13">tool_call</text>
+          <rect x="60" y="20" width="180" height="48" rx="11" fill="#1D1D24" stroke="#FFC24B" stroke-width="2"/>
+          <text x="150" y="45" fill="#F4F2ED" font-size="18" font-weight="700" dominant-baseline="middle">模型（决策）</text>
+          <rect x="425" y="20" width="180" height="48" rx="11" fill="#1D1D24" stroke="#33333C" stroke-width="2"/>
+          <text x="515" y="45" fill="#F4F2ED" font-size="18" font-weight="700" dominant-baseline="middle">工具（执行）</text>
+          <circle cx="650" cy="44" r="15" fill="none" stroke="#FF5C1F" stroke-width="2"/>
+          <text x="650" y="45" fill="#FF5C1F" font-size="17" font-weight="700" dominant-baseline="middle">✗</text>
+          <path d="M 505 68 L 505 96 L 150 96 L 150 76" fill="none" stroke="#FFC24B" stroke-width="2"/>
+          <polygon points="145,78 150,68 155,78" fill="#FFC24B"/>
+          <text x="330" y="90" fill="#FFC24B" font-size="15" font-weight="700">结构化错误（哪里错 · 为什么）→ 下一轮自纠 ↺</text>
+          <rect x="760" y="76" width="400" height="34" rx="8" fill="none" stroke="#33333C" stroke-dasharray="4 4"/>
+          <text x="960" y="94" fill="#9C9AA3" font-size="14" dominant-baseline="middle">超时 / 死循环 / 限流 —— 同样编码成信号，循环不崩</text>
+          <line x1="668" y1="52" x2="756" y2="76" stroke="#33333C" stroke-width="1.5" stroke-dasharray="4 4"/>
+        </g>
+      </svg>
+      <div class="figcap"><b>错误走回路，不走异常</b>——它是循环里信息量最大的那种输入。</div>
+    </div>
+    <div class="strip reveal r5">
+      <span class="sc"><b>文献印证</b> SWE-agent ACI：护栏 + 反馈</span>
+      <span class="sc hot"><b>代码印证</b> 四事件流 error 通道 · detectLoop · withTimeout</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 09 转变④ ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">ACT 3 · 转变 4 / 4</div>
+    <h2 class="reveal r2">安全：<s>提示词</s> → <em>不是安全边界</em></h2>
+    <div class="dgrid reveal r3">
+      <div class="dc before"><div class="dt"><span>以前我以为</span></div>
+        <p>在 prompt 里写上「你不许删文件、不许泄露密钥」就安全了；模型听话 = 系统安全。</p></div>
+      <div class="dc after"><div class="dt"><span>现在我知道</span></div>
+        <p>提示词是<b>引导，不是执法</b>：模型可以被任何输入带偏，安全必须<b>独立于模型意志</b>存在——在代码里，不在话术里。</p></div>
+    </div>
+    <div class="pts reveal r4">
+      <div class="pt"><span class="no">▸</span><p><b>四道防线，全在执行路径上</b>：危险操作先审批（用户一键放行/拒绝）→ 敏感路径直接拦截（<code>.env</code> / <code>.ssh</code> / <code>id_rsa</code>）→ 输出脱敏（密钥形态打码再进上下文）→ 防循环兜底。</p></div>
+      <div class="pt"><span class="no">▸</span><p><b>引导与执法分离</b>（deepseek-harness 的哲学）：上下文内容负责引导模型行为得好，独立机制负责保证它坏不到哪去——<b>两者互不越界</b>。</p></div>
+      <div class="pt"><span class="no">▸</span><p><b>最反直觉的一点</b>：拦截时还要把原因告诉模型——它常常会自己换一条合法路径完成任务，而不是直接失败。</p></div>
+    </div>
+    <div class="fig reveal r4">
+      <svg viewBox="0 0 1200 156" role="img" aria-label="四道闸门：审批、拦截、脱敏、防循环，长在执行路径上">
+        <g font-family="Archivo,'Noto Sans SC',sans-serif" text-anchor="middle">
+          <text x="300" y="26" fill="#F4F2ED" font-size="15" font-weight="700">① 审批</text>
+          <text x="500" y="26" fill="#F4F2ED" font-size="15" font-weight="700">② 拦截</text>
+          <text x="700" y="26" fill="#F4F2ED" font-size="15" font-weight="700">③ 脱敏</text>
+          <text x="900" y="26" fill="#F4F2ED" font-size="15" font-weight="700">④ 防循环</text>
+          <rect x="30" y="52" width="150" height="44" rx="10" fill="#1D1D24" stroke="#9C9AA3"/>
+          <text x="105" y="75" fill="#FFC24B" font-size="15" font-weight="700" dominant-baseline="middle">tool_call</text>
+          <line x1="180" y1="74" x2="288" y2="74" stroke="#33333C" stroke-width="2"/><polygon points="288,69 298,74 288,79" fill="#FF5C1F"/>
+          <line x1="312" y1="74" x2="488" y2="74" stroke="#33333C" stroke-width="2"/><polygon points="488,69 498,74 488,79" fill="#FF5C1F"/>
+          <line x1="512" y1="74" x2="688" y2="74" stroke="#33333C" stroke-width="2"/><polygon points="688,69 698,74 688,79" fill="#FF5C1F"/>
+          <line x1="712" y1="74" x2="888" y2="74" stroke="#33333C" stroke-width="2"/><polygon points="888,69 898,74 888,79" fill="#FF5C1F"/>
+          <line x1="912" y1="74" x2="1024" y2="74" stroke="#33333C" stroke-width="2"/><polygon points="1024,69 1034,74 1024,79" fill="#FF5C1F"/>
+          <rect x="300" y="42" width="14" height="64" rx="4" fill="#FF5C1F"/>
+          <rect x="500" y="42" width="14" height="64" rx="4" fill="#FF5C1F"/>
+          <rect x="700" y="42" width="14" height="64" rx="4" fill="#FF5C1F"/>
+          <rect x="900" y="42" width="14" height="64" rx="4" fill="#FF5C1F"/>
+          <rect x="1034" y="52" width="136" height="44" rx="10" fill="#1D1D24" stroke="#FFC24B" stroke-width="2"/>
+          <text x="1102" y="75" fill="#FFC24B" font-size="16" font-weight="700" dominant-baseline="middle">安全执行</text>
+          <path d="M 507 106 L 507 126" fill="none" stroke="#FF5C1F" stroke-width="2" stroke-dasharray="4 3"/>
+          <polygon points="502,124 507,134 512,124" fill="#FF5C1F"/>
+          <rect x="330" y="118" width="354" height="30" rx="8" fill="none" stroke="#FF5C1F" stroke-dasharray="4 3"/>
+          <text x="507" y="134" fill="#FFB48E" font-size="14" dominant-baseline="middle">拒绝并告知原因 → 模型自己换合法路径</text>
+          <text x="960" y="134" fill="#9C9AA3" font-size="13">闸门在代码里，不在话术里</text>
+        </g>
+      </svg>
+      <div class="figcap"><b>闸门长在执行路径上</b>——提示词负责引导，这四道负责执法，互不越界。</div>
+    </div>
+    <div class="strip reveal r5">
+      <span class="sc"><b>文献印证</b> deepseek-harness 设计哲学</span>
+      <span class="sc hot"><b>代码印证</b> beforeToolCall / afterToolCall / needsApproval</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 10 踩坑 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">ACT 4 · 踩坑</div>
+    <h2 class="reveal r2">三个真实的坑，<em>每个都迭代了一版</em></h2>
+    <div class="tl reveal r3">
+      <div class="tli"><div class="yr">坑 1</div><div class="tbox">
+        <div class="tti">Skills 关键词匹配<span>「看着能跑，用着漏激活」</span></div>
+        <p>第一版用关键词激活技能：<b>「帮我看看这段代码有什么问题」不含「审查」二字就不生效</b>；关键词枚举不完；指令逐轮淡出。→ 第二版改成<b>目录常驻 + 模型语义路由 + 压缩后可重载自愈</b>——把「理解意图」还给模型。</p></div></div>
+      <div class="tli"><div class="yr">坑 2</div><div class="tbox">
+        <div class="tti">abort 时压缩<span>「半新不旧的上下文，压出坏摘要」</span></div>
+        <p>用户中断的瞬间如果触发压缩，拿到的摘要会污染后续所有对话。→ 立下红线：<b>abort 不压缩</b>；加上「压缩失败不替换原文」——<b>空摘要比没有摘要更危险</b>。</p></div></div>
+      <div class="tli"><div class="yr">坑 3</div><div class="tbox">
+        <div class="tti">压缩切在工具配对中间<span>「恢复会话，API 直接 400」</span></div>
+        <p>裁剪历史时切在 tool_call 与 tool_result 之间，会话恢复直接被 API 拒绝。→ 总结<b>切点三规则</b>：只切消息边界、不切配对、整轮对齐——教训变成了单测。</p></div></div>
+    </div>
+    <div class="fig reveal r3">
+      <svg viewBox="0 0 1200 112" role="img" aria-label="迭代闭环：跑出问题、记入日志、改第二版、单测锁死">
+        <g font-family="Archivo,'Noto Sans SC',sans-serif" text-anchor="middle">
+          <path d="M 1065 30 C 990 -6 240 -6 173 28" fill="none" stroke="#33333C" stroke-width="2" stroke-dasharray="5 5"/>
+          <polygon points="181,20 167,32 181,38" fill="#9C9AA3"/>
+          <text x="620" y="12" fill="#9C9AA3" font-size="14">下一个功能，同样的节奏 ↺</text>
+          <line x1="290" y1="62" x2="344" y2="62" stroke="#33333C" stroke-width="2"/><polygon points="344,57 355,62 344,67" fill="#FF5C1F"/>
+          <line x1="590" y1="62" x2="644" y2="62" stroke="#33333C" stroke-width="2"/><polygon points="644,57 655,62 644,67" fill="#FF5C1F"/>
+          <line x1="890" y1="62" x2="944" y2="62" stroke="#33333C" stroke-width="2"/><polygon points="944,57 955,62 944,67" fill="#FF5C1F"/>
+          <rect x="65" y="40" width="225" height="44" rx="10" fill="#1D1D24" stroke="#FF5C1F" stroke-width="2"/>
+          <text x="177" y="63" fill="#F4F2ED" font-size="17" font-weight="700" dominant-baseline="middle">跑出问题</text>
+          <rect x="355" y="40" width="225" height="44" rx="10" fill="#1D1D24" stroke="#FF5C1F" stroke-width="2"/>
+          <text x="467" y="63" fill="#F4F2ED" font-size="17" font-weight="700" dominant-baseline="middle">记入日志</text>
+          <rect x="655" y="40" width="225" height="44" rx="10" fill="#1D1D24" stroke="#FF5C1F" stroke-width="2"/>
+          <text x="767" y="63" fill="#F4F2ED" font-size="17" font-weight="700" dominant-baseline="middle">改第二版</text>
+          <rect x="955" y="40" width="225" height="44" rx="10" fill="#1D1D24" stroke="#FFC24B" stroke-width="2"/>
+          <text x="1067" y="63" fill="#FFC24B" font-size="17" font-weight="700" dominant-baseline="middle">单测锁死</text>
+          <text x="620" y="104" fill="#9C9AA3" font-size="14">教训不止记在脑子里——变成一条跑不过去的测试</text>
+        </g>
+      </svg>
+    </div>
+    <div class="banner reveal r4">第一版几乎总是错的——日志让每一个错都变成了资产。
+      <small>三个坑没有一个是靠「想清楚」躲过的，全是跑出来、记下来、改掉的。</small></div>
+  </div>
+</section>
+
+<!-- ============ 11 三条哲学 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">ACT 4 · 沉淀</div>
+    <h2 class="reveal r2">三条设计哲学：<em>学到，也被自己印证</em></h2>
+    <div class="pts"><div class="pt reveal r3"><p>精读 deepseek-harness 时摘出三条哲学，回头发现<b>自己的每一次踩坑都是它们的注脚</b>——好设计不是发明出来的，是教训的结晶。</p></div></div>
+    <div class="steps reveal r4">
+      <div class="step"><div class="phead">
+        <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+          <line x1="3" y1="5" x2="23" y2="5" stroke="#9C9AA3" stroke-width="2"/>
+          <line x1="3" y1="11" x2="23" y2="11" stroke="#9C9AA3" stroke-width="2"/>
+          <line x1="3" y1="17" x2="19" y2="17" stroke="#9C9AA3" stroke-width="2"/>
+          <line x1="3" y1="23" x2="15" y2="23" stroke="#FFC24B" stroke-width="2.5"/>
+        </svg>
+        <div class="sn">PHILOSOPHY 1</div></div><div class="stt">Log 是唯一权威</div>
+        <p>一切「当前状态」都是从日志<b>折叠出来的投影</b>，连删除都只是投影替换，日志永不删。<br><span class="lab">我的印证：</span>会话逐行落盘、逐行容错——崩溃后从日志重放即恢复，天然可审计。</p></div>
+      <div class="step"><div class="phead">
+        <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+          <rect x="3" y="4" width="9" height="9" fill="#9C9AA3" opacity=".55"/>
+          <rect x="14" y="4" width="9" height="9" fill="#9C9AA3" opacity=".55"/>
+          <rect x="3" y="15" width="9" height="9" fill="#9C9AA3" opacity=".55"/>
+          <rect x="14" y="15" width="9" height="9" fill="#FFC24B"/>
+        </svg>
+        <div class="sn">PHILOSOPHY 2</div></div><div class="stt">追加优先，失效最晚</div>
+        <p>只 <b>append + replace</b>，不改写历史——旧数据失效得越晚，系统越稳。<br><span class="lab">我的印证：</span>待办清单用「整表替换」维护，最新状态永远贴在上下文尾部，天然保鲜、零重注入。</p></div>
+      <div class="step"><div class="phead">
+        <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+          <rect x="2" y="2" width="22" height="22" rx="4" fill="none" stroke="#33333C" stroke-width="2"/>
+          <line x1="2" y1="13" x2="24" y2="13" stroke="#FF5C1F" stroke-dasharray="3 3" stroke-width="2"/>
+          <circle cx="9" cy="7.5" r="2.5" fill="#9C9AA3"/>
+          <rect x="8" y="16.5" width="9" height="6" fill="#FF5C1F"/>
+        </svg>
+        <div class="sn">PHILOSOPHY 3</div></div><div class="stt">引导与执法分离</div>
+        <p>上下文负责<b>引导</b>模型行为，独立机制负责<b>执法</b>保证底线，两者互不越界。<br><span class="lab">我的印证：</span>四道防线全部长在执行路径的代码里——提示词永远不是安全边界。</p></div>
+    </div>
+    <div class="strip reveal r5">
+      <span class="sc"><b>来源</b> deepseek-harness 源码答疑 19 条</span>
+      <span class="sc hot"><b>我的用法</b> 评估任何 agent 系统时，先拿这三条照一遍</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 12 我的变化 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">ACT 4 · 变化</div>
+    <h2 class="reveal r2">学完之后，<em>我变了</em></h2>
+    <div class="dgrid reveal r3">
+      <div class="dc after"><div class="dchead">
+        <svg width="110" height="40" viewBox="0 0 110 40" aria-hidden="true">
+          <ellipse cx="34" cy="20" rx="24" ry="14" fill="none" stroke="#F4F2ED" stroke-width="2"/>
+          <circle cx="34" cy="20" r="5.5" fill="#FFC24B"/>
+          <path d="M 86 8 A 16 16 0 1 1 68 11" fill="none" stroke="#FF5C1F" stroke-width="2.5"/>
+          <polygon points="64,4 78,7 70,18" fill="#FF5C1F"/>
+        </svg>
+        <div class="dt"><span>变化一</span>用 AI 的方式</div></div>
+        <p><b>看得懂它在干什么</b>：每轮组装上下文、调工具、回填结果——不再是黑盒魔法；<b>它卡住时我会诊断</b>：是超窗了？工具失败了？还是在绕圈？；<b>知道怎么配合它</b>：反馈给结构、确定性交给工具，而不是反复口语化地「求它」。</p></div>
+      <div class="dc after"><div class="dchead">
+        <svg width="110" height="40" viewBox="0 0 110 40" aria-hidden="true">
+          <rect x="6" y="4" width="12" height="12" rx="3" fill="none" stroke="#9C9AA3" stroke-width="2"/>
+          <polyline points="8,10 11,13 16,7" fill="none" stroke="#FFC24B" stroke-width="2.5"/>
+          <rect x="6" y="22" width="12" height="12" rx="3" fill="none" stroke="#9C9AA3" stroke-width="2"/>
+          <polyline points="8,28 11,31 16,25" fill="none" stroke="#FFC24B" stroke-width="2.5"/>
+          <line x1="26" y1="10" x2="104" y2="10" stroke="#9C9AA3" stroke-width="2"/>
+          <line x1="26" y1="28" x2="86" y2="28" stroke="#9C9AA3" stroke-width="2"/>
+        </svg>
+        <div class="dt"><span>变化二</span>看 AI 产品的眼光</div></div>
+        <p><b>一眼分清「套壳聊天」与「真 harness」</b>：问它有没有循环、预算、工具契约、护栏、日志五个要素；<b>不被 demo 唬住</b>：演示永远顺路，问它的压缩策略、失败路径、恢复机制；<b>评估有了框架</b>：五要素就是我的检查清单。</p></div>
+    </div>
+    <div class="pts reveal r4">
+      <div class="pt"><span class="no">▸</span><p>从「<b>这个工具好神奇</b>」到「<b>这个工具在第几轮做了什么、为什么有效、边界在哪</b>」——提问的粒度完全变了。</p></div>
+      <div class="pt"><span class="no">▸</span><p>对「AI 取代程序员」的焦虑也变了：<b>harness 本身就是要人写的工程</b>——理解它的人，是设计者而不是被替代者。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 13 下一步 + 收束 ============ -->
+<section class="slide">
+  <div class="slide-content">
+    <div class="kicker reveal r1">Next · 下一步</div>
+    <h2 class="reveal r2">这份心得的<em>下一页</em></h2>
+    <div class="pts reveal r3">
+      <div class="pt"><span class="no">01</span><p><b>把单 agent 做深</b>：沿既定路线推进 P4 交互体验与 P6 编排层——多 agent 并行、worktree 隔离、分屏协作，验证「先深后编」的路线判断。</p></div>
+      <div class="pt"><span class="no">02</span><p><b>把 harness 思维带回工作</b>：评估 AI 工具、设计自动化流程时，用五要素与三条哲学做检查清单——<b>学习成果要能离开学习场景才算数</b>。</p></div>
+      <div class="pt"><span class="no">03</span><p><b>继续日志制度</b>：122 条不是终点——下一个 122 条里，应该有更多「我当时以为…后来发现…」。</p></div>
+    </div>
+    <div class="banner reveal r4">会用一个工具，和看懂一个工具，是两种完全不同的竞争力。
+      <small>——而「看懂」的唯一路径，是亲手把它造一遍。</small></div>
+    <div class="fig reveal r4">
+      <svg viewBox="0 0 1200 112" role="img" aria-label="路线图：P1到P5已完成，P6编排层是下一步，之后应用到工作">
+        <g font-family="Archivo,'Noto Sans SC',sans-serif" text-anchor="middle">
+          <polyline points="80,82 260,72 440,62 620,52 800,42 960,34 1060,26" fill="none" stroke="#33333C" stroke-width="2"/>
+          <line x1="968" y1="30" x2="1046" y2="23" stroke="#FFC24B" stroke-width="2" stroke-dasharray="6 5"/>
+          <circle cx="80" cy="82" r="8" fill="#FF5C1F"/>
+          <circle cx="260" cy="72" r="8" fill="#FF5C1F"/>
+          <circle cx="440" cy="62" r="8" fill="#FF5C1F"/>
+          <circle cx="620" cy="52" r="8" fill="#FF5C1F"/>
+          <circle cx="800" cy="42" r="8" fill="#FF5C1F"/>
+          <circle cx="960" cy="34" r="9" fill="#1D1D24" stroke="#FFC24B" stroke-width="2.5"/>
+          <polygon points="1060,14 1070,26 1060,38 1050,26" fill="#FFC24B"/>
+          <text x="80" y="106" fill="#9C9AA3" font-size="13">P1 上下文</text>
+          <text x="260" y="106" fill="#9C9AA3" font-size="13">P2 工具</text>
+          <text x="440" y="106" fill="#9C9AA3" font-size="13">P3 地基</text>
+          <text x="620" y="106" fill="#9C9AA3" font-size="13">P4 交互</text>
+          <text x="800" y="106" fill="#9C9AA3" font-size="13">P5 生态</text>
+          <text x="955" y="106" fill="#FFC24B" font-size="13" font-weight="700">P6 编排</text>
+          <text x="1042" y="106" fill="#FFC24B" font-size="13" font-weight="700">工作应用</text>
+          <text x="990" y="10" fill="#FFC24B" font-size="14">下一步</text>
+        </g>
+      </svg>
+      <div class="figcap"><b>路线不改</b>：先把单 agent 做深，再谈编排；同时把这套方法论带回工作。</div>
+    </div>
+    <div class="strip reveal r5">
+      <span class="sc"><b>项目</b> pi-from-scratch · 9 模块 ~1,800 行</span>
+      <span class="sc"><b>记录</b> docs/答疑日志.md · 122 条</span>
+      <span class="sc"><b>验证</b> 100 个单元测试全绿</span>
+      <span class="sc hot"><b>对照</b> pi · deepseek-harness 源码</span>
+    </div>
+  </div>
+  <div class="ring"></div>
+  <div class="block reveal r5"><div class="word">THANKS · Q&amp;A</div><div class="num">13</div></div>
+</section>
+
+<script>
+  /* ============================================================
+     SlidePresentation 控制器（与 agent-harness-deck 同源）
+     键盘翻页 / 滚轮 / 触摸滑动 / 进度条 / 导航点 / IO 滚动动画
+     兼容 html-to-pptx 渲染：暴露 window.__deckLen + ArrowRight 翻页
+     ============================================================ */
+  class SlidePresentation {
+    constructor() {
+      this.slides = [...document.querySelectorAll('.slide')];
+      this.i = 0;
+      this.n = this.slides.length;
+      window.__deckLen = this.n;
+      this.progress = document.getElementById('progress');
+      this.counter = document.getElementById('counter');
+      this.dots = document.getElementById('dots');
+      this.buildDots();
+      this.bindKeys();
+      this.bindWheel();
+      this.bindTouch();
+      this.observe();
+    }
+    buildDots() {
+      this.slides.forEach((_, k) => {
+        const b = document.createElement('button');
+        b.setAttribute('aria-label', `跳到第 ${k + 1} 页`);
+        b.addEventListener('click', () => this.go(k));
+        this.dots.appendChild(b);
+      });
+      this.dotEls = [...this.dots.children];
+    }
+    go(k, smooth = true) {
+      k = Math.max(0, Math.min(this.n - 1, k));
+      this.i = k;
+      const root = document.documentElement;
+      if (!smooth) root.style.scrollBehavior = 'auto';
+      this.slides[k].scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
+      if (!smooth) root.style.scrollBehavior = '';
+      this.slides[k].classList.add('visible');
+      this.sync();
+    }
+    next() { this.go(this.i + 1); }
+    prev() { this.go(this.i - 1); }
+    sync() {
+      this.progress.style.width = `${((this.i + 1) / this.n) * 100}%`;
+      this.counter.textContent = `${String(this.i + 1).padStart(2, '0')} / ${this.n}`;
+      this.dotEls.forEach((d, k) => d.classList.toggle('on', k === this.i));
+    }
+    bindKeys() {
+      addEventListener('keydown', (e) => {
+        if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); this.next(); }
+        else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) { e.preventDefault(); this.prev(); }
+        else if (e.key === 'Home') { e.preventDefault(); this.go(0); }
+        else if (e.key === 'End') { e.preventDefault(); this.go(this.n - 1); }
+      });
+    }
+    bindWheel() {
+      let lock = false;
+      addEventListener('wheel', (e) => {
+        if (lock) return;
+        lock = true; setTimeout(() => (lock = false), 650);
+        e.deltaY > 0 ? this.next() : this.prev();
+      }, { passive: true });
+    }
+    bindTouch() {
+      let x0 = null;
+      addEventListener('touchstart', (e) => (x0 = e.touches[0].clientX), { passive: true });
+      addEventListener('touchend', (e) => {
+        if (x0 === null) return;
+        const dx = e.changedTouches[0].clientX - x0;
+        if (Math.abs(dx) > 50) dx < 0 ? this.next() : this.prev();
+        x0 = null;
+      }, { passive: true });
+    }
+    observe() {
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach((en) => {
+          if (en.isIntersecting && en.intersectionRatio >= 0.5) {
+            en.target.classList.add('visible');
+            this.i = this.slides.indexOf(en.target);
+            this.sync();
+          }
+        });
+      }, { threshold: [0.5] });
+      this.slides.forEach((s) => io.observe(s));
+    }
+  }
+  const deck = new SlidePresentation();
+  const params = new URLSearchParams(location.search);
+
+  // ?only=N：仅保留第 N 页并禁用入场动画（headless 截图专用，确定性渲染）
+  const only = parseInt(params.get('only') ?? '', 10);
+  if (Number.isInteger(only) && only >= 1 && only <= deck.n) {
+    deck.slides.forEach((s, k) => { if (k !== only - 1) s.remove(); });
+    document.documentElement.classList.add('capture');
+    deck.slides[only - 1].classList.add('visible');
+    deck.n = 1; deck.i = 0; deck.sync();
+  } else {
+    const q = parseInt(params.get('slide') ?? '', 10);
+    if (Number.isInteger(q)) deck.go(q - 1, false);
+  }
+</script>
+</body>
+</html>

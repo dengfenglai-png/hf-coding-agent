@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Harness 技术汇报 — 七问七答</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@500;600;700&family=Noto+Sans+SC:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+     一页式汇报 · Bold Signal 视觉语言（与 deck / anatomy 同源）
+     叙事：Loop 为入口的架构图 → 抛出七个具体问题 → 最小 harness → 逐问作答
+     面向汇报场景：不展示代码，只讲机制与取舍
+     ============================================================ */
+  :root {
+    --bg: #141419; --card: #1D1D24; --card2: #23232B;
+    --ink: #F4F2ED; --sub: #9C9AA3;
+    --acc: #FF5C1F; --acc2: #FFC24B; --line: #33333C;
+    --ok: #7ED99A;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: "Archivo", "Noto Sans SC", "PingFang SC", sans-serif;
+    line-height: 1.7; overflow-x: hidden;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 clamp(1.1rem, 4vw, 3rem); }
+  section { padding: clamp(3rem, 7vh, 5.5rem) 0; }
+  .kicker {
+    display: flex; align-items: center; gap: 12px;
+    font-size: clamp(.72rem, 1vw, .85rem); font-weight: 700; letter-spacing: .26em;
+    color: var(--acc); text-transform: uppercase;
+  }
+  .kicker::before { content: ""; width: clamp(24px, 3vw, 42px); height: 3px; background: var(--acc); flex: none; }
+  h2 { margin-top: clamp(.5rem, 1.6vh, 1rem); font-weight: 900;
+    font-size: clamp(1.5rem, 3.4vw, 2.5rem); line-height: 1.18; letter-spacing: -.01em;
+    font-family: "Archivo Black", "Noto Sans SC", sans-serif; }
+  h2 em { font-style: normal; color: var(--acc); }
+  .lead { margin-top: 1rem; color: var(--sub); font-size: clamp(.95rem, 1.5vw, 1.15rem); max-width: 74ch; }
+  .lead b { color: var(--ink); }
+
+  /* ---- Hero ---- */
+  .hero { padding: clamp(4rem, 10vh, 7rem) 0 clamp(3rem, 7vh, 5rem); position: relative; overflow: hidden; }
+  .hero h1 {
+    margin-top: clamp(.8rem, 2.4vh, 1.4rem);
+    font-family: "Archivo Black", "Noto Sans SC", sans-serif; font-weight: 900;
+    font-size: clamp(2rem, 5.6vw, 4.4rem); line-height: 1.12; letter-spacing: -.01em; max-width: 17ch;
+  }
+  .hero h1 em { font-style: normal; color: var(--acc); }
+  .hero .sub { margin-top: clamp(1rem, 2.6vh, 1.6rem); color: var(--sub);
+    font-size: clamp(.95rem, 1.6vw, 1.2rem); max-width: 64ch; }
+  .hero .sub b { color: var(--ink); }
+  .ring { position: absolute; right: -110px; top: -110px; width: 340px; height: 340px;
+    border-radius: 50%; border: 34px solid var(--card); pointer-events: none; }
+  .hero .tags { margin-top: 1.6rem; display: flex; flex-wrap: wrap; gap: 8px; }
+  .tag { background: var(--card2); border: 1px solid var(--line); border-radius: 8px;
+    padding: 5px 12px; font-size: clamp(.72rem, 1vw, .84rem); color: var(--sub); }
+  .tag b { color: var(--acc2); }
+
+  /* ---- Hub 架构图：Loop 为入口 ---- */
+  .hub { margin-top: clamp(1.4rem, 3vh, 2.2rem); display: grid; grid-template-columns: 1.06fr 1fr;
+    gap: clamp(1rem, 2.2vw, 1.8rem); align-items: start; }
+  .inbound, .outbound {
+    text-align: center; color: var(--acc); font-weight: 700;
+    font-size: clamp(.85rem, 1.2vw, 1rem); line-height: 1.35;
+  }
+  .inbound span, .outbound span { color: var(--sub); font-weight: 500; margin-left: 8px; font-size: .88em; }
+  .loopbox { border: 2px solid rgba(255,92,31,.55); border-radius: 16px; background: rgba(255,92,31,.03);
+    padding: clamp(1rem, 2.2vh, 1.5rem); position: relative; }
+  .loopbox .lt { text-align: center; font-family: "Archivo Black", "Noto Sans SC", sans-serif; font-weight: 900;
+    font-size: clamp(1.15rem, 2.1vw, 1.55rem); color: var(--acc); letter-spacing: .1em; }
+  .loopbox .ls { text-align: center; color: var(--sub); font-size: clamp(.75rem, 1.05vw, .9rem); margin-top: 2px; }
+  .phases { margin-top: clamp(.8rem, 1.8vh, 1.1rem); display: grid;
+    grid-template-columns: clamp(26px, 3vw, 34px) 1fr; gap: 0 clamp(8px, 1.2vw, 12px); }
+  /* 阶段卡与箭头一律钉在第 2 列：backcol 只占第 1 列，避免 auto-placement
+     把第 ③④ 张卡掉进 34px 窄列（文字逐字竖排） */
+  .phase, .parrow { grid-column: 2; }
+  .backcol { grid-row: 1 / -1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .backcol .bar { flex: 1; width: 3px; background: linear-gradient(to top, var(--acc), rgba(255,92,31,.25)); border-radius: 2px; }
+  .backcol .cap { color: var(--acc); font-weight: 900; font-size: clamp(.9rem, 1.4vw, 1.1rem); line-height: 1; padding: 4px 0; }
+  .phase { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: clamp(.5rem, 1.2vh, .8rem) clamp(.7rem, 1.2vw, 1rem); }
+  .phase .pht { font-weight: 700; font-size: clamp(.85rem, 1.3vw, 1rem); }
+  .phase .pht i { font-style: normal; color: var(--acc); font-family: "Archivo Black", sans-serif; margin-right: 8px; font-size: .9em; }
+  .phase p { margin-top: 2px; color: var(--sub); font-size: clamp(.72rem, 1.02vw, .86rem); line-height: 1.5; }
+  .phase p b { color: var(--ink); }
+  .parrow { text-align: center; color: var(--acc); font-weight: 700; font-size: .85rem; padding: 3px 0; grid-column: 2; }
+  .sats { display: grid; grid-template-columns: 1fr; gap: clamp(.5rem, 1.2vh, .8rem); }
+  .sat { background: var(--card); border-radius: 12px; border-left: 4px solid var(--acc2);
+    padding: clamp(.6rem, 1.4vh, .9rem) clamp(.8rem, 1.3vw, 1.1rem); }
+  .sat .hook { font-size: clamp(.66rem, .92vw, .78rem); color: var(--acc2); font-weight: 700; letter-spacing: .04em; }
+  .sat .st2 { font-weight: 700; font-size: clamp(.9rem, 1.35vw, 1.05rem); margin-top: 2px; }
+  .sat p { margin-top: 3px; color: var(--sub); font-size: clamp(.74rem, 1.05vw, .88rem); line-height: 1.55; }
+  .sat p b { color: var(--ink); }
+  .hubnote { margin-top: clamp(1rem, 2.2vh, 1.4rem); }
+
+  /* ---- 问题卡 ---- */
+  .qlist { margin-top: clamp(1.4rem, 3vh, 2.2rem); display: grid; grid-template-columns: 1fr 1fr; gap: clamp(.7rem, 1.6vw, 1.1rem); }
+  .qcard { background: var(--card); border-radius: 14px; padding: clamp(.9rem, 2vh, 1.3rem) clamp(1rem, 1.6vw, 1.3rem);
+    border-top: 3px solid var(--acc); }
+  .qcard .qn { font-family: "Archivo Black", sans-serif; color: var(--acc);
+    font-size: clamp(1.3rem, 2.4vw, 1.8rem); line-height: 1; }
+  .qcard .qt { margin-top: 6px; font-weight: 700; font-size: clamp(.92rem, 1.4vw, 1.1rem); line-height: 1.55; }
+  .qcard .qa-tag { margin-top: 8px; display: inline-block; font-size: clamp(.68rem, .95vw, .8rem);
+    color: var(--sub); background: var(--card2); border: 1px solid var(--line); border-radius: 6px; padding: 2px 9px; }
+  .qcard .qa-tag b { color: var(--acc2); }
+
+  /* ---- 最小 harness 桥接 ---- */
+  .miniarch { margin-top: clamp(1.2rem, 2.6vh, 1.8rem); display: flex; flex-direction: column; gap: clamp(.35rem, .9vh, .6rem); }
+  .mrow { display: grid; grid-template-columns: clamp(26px, 3vw, 36px) clamp(96px, 11vw, 140px) 1fr;
+    gap: clamp(7px, 1.2vw, 13px); align-items: center;
+    background: var(--card); border-radius: 9px; border-left: 4px solid var(--acc);
+    padding: clamp(.45rem, 1vh, .75rem) clamp(.7rem, 1.2vw, 1rem); }
+  .mrow.core { background: var(--card2); border-left-color: var(--acc2); outline: 1px solid rgba(255,194,75,.35); }
+  .mrow .mn { font-family: "Archivo Black", sans-serif; color: var(--acc); text-align: center;
+    font-size: clamp(.82rem, 1.25vw, 1rem); }
+  .mrow.core .mn { color: var(--acc2); }
+  .mrow .mt2 { font-weight: 700; font-size: clamp(.82rem, 1.25vw, .98rem); }
+  .mrow p { color: var(--sub); font-size: clamp(.72rem, 1.02vw, .86rem); line-height: 1.5; }
+  .mrow p b { color: var(--ink); }
+  .facts { margin-top: clamp(.9rem, 2vh, 1.3rem); display: flex; flex-wrap: wrap; gap: 8px; }
+  .facts .f { background: var(--card2); border: 1px solid var(--line); border-radius: 8px;
+    padding: 5px 12px; font-size: clamp(.72rem, 1vw, .84rem); color: var(--sub); }
+  .facts .f b { color: var(--acc2); }
+
+  /* ---- 逐问作答 ---- */
+  .answers { margin-top: clamp(1.4rem, 3vh, 2.2rem); display: flex; flex-direction: column; gap: clamp(1rem, 2.4vh, 1.6rem); }
+  .ans { background: var(--card); border-radius: 16px; padding: clamp(1rem, 2.2vh, 1.5rem) clamp(1.1rem, 2vw, 1.6rem);
+    border-left: 5px solid var(--acc); }
+  .ans .ahead { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .ans .an { font-family: "Archivo Black", sans-serif; color: var(--acc); font-size: clamp(1.4rem, 2.6vw, 2rem); line-height: 1; }
+  .ans .aq { font-weight: 700; font-size: clamp(.98rem, 1.55vw, 1.2rem); line-height: 1.5; }
+  .ans .mech { margin-top: .8rem; display: flex; flex-direction: column; gap: 6px; }
+  .ans .mech p { color: var(--sub); font-size: clamp(.85rem, 1.2vw, 1rem); padding-left: 1.15em; position: relative; }
+  .ans .mech p::before { content: "▸"; position: absolute; left: 0; color: var(--acc); }
+  .ans .mech p b { color: var(--ink); }
+  .ans .deep { margin-top: .8rem; background: var(--card2); border: 1px solid rgba(255,194,75,.3);
+    border-radius: 10px; padding: .6rem .9rem; font-size: clamp(.78rem, 1.1vw, .92rem); color: var(--sub); }
+  .ans .deep b { color: var(--acc2); }
+
+  /* ---- 收束 ---- */
+  .punch { margin-top: clamp(1.4rem, 3vh, 2rem);
+    background: var(--card); border-left: 5px solid var(--acc); border-radius: 12px;
+    padding: clamp(1rem, 2.2vh, 1.5rem) clamp(1.1rem, 2vw, 1.6rem);
+    font-size: clamp(1rem, 1.9vw, 1.35rem); font-weight: 700; line-height: 1.55; }
+  .punch em { font-style: normal; color: var(--acc2); }
+  .punch small { display: block; margin-top: 6px; font-size: clamp(.75rem, 1vw, .88rem);
+    font-weight: 500; color: var(--sub); }
+  footer { padding: 2.4rem 0 3.2rem; color: var(--sub); font-size: clamp(.75rem, 1vw, .88rem);
+    border-top: 1px solid var(--line); }
+  footer b { color: var(--acc2); }
+
+  /* ---- 入场动画 ---- */
+  .rv { opacity: 0; transform: translateY(24px); transition: opacity .6s cubic-bezier(.2,.8,.25,1), transform .6s cubic-bezier(.2,.8,.25,1); }
+  .rv.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { .rv { opacity: 1; transform: none; transition: none; } }
+
+  /* ---- 响应式 ---- */
+  @media (max-width: 640px) {
+    .hub, .qlist { grid-template-columns: 1fr; }
+    .mrow { grid-template-columns: 26px 1fr; }
+    .mrow p { grid-column: 1 / -1; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= Hero ================= -->
+<header class="hero">
+  <div class="ring"></div>
+  <div class="wrap">
+    <div class="kicker rv">Agent Harness · 技术汇报</div>
+    <h1 class="rv">七个具体问题，<br>和一个<em>最小 harness</em> 的答案</h1>
+    <p class="sub rv">大模型的上下文会溢出、只会生成文本、会传错参数、可能闯祸、崩了要能恢复——
+      <b>这些问题怎么解？我从零实现了一个最小的 agent harness，用一个循环加六个模块，把它们逐一解答。</b>
+      本页内容全部来自项目答疑日志的一手记录。</p>
+    <div class="tags rv">
+      <span class="tag"><b>架构</b> Loop 是唯一入口</span>
+      <span class="tag"><b>问题</b> 七问直击要害</span>
+      <span class="tag"><b>载体</b> 亲手实现的最小 harness</span>
+      <span class="tag"><b>依据</b> 答疑日志（问题 + 方案 + 取舍）</span>
+    </div>
+  </div>
+</header>
+
+<!-- ================= 01 架构：Loop 是入口 ================= -->
+<section id="arch">
+  <div class="wrap">
+    <div class="kicker rv">01 · 架构 — Loop 是唯一入口</div>
+    <h2 class="rv">一个循环，<em>调用其余一切</em></h2>
+    <p class="lead rv">参照本项目（pi-from-scratch）与 deepseek-harness 的共同骨架：系统里没有「主程序」，
+      只有 <b>agent loop 这个入口</b>——它每轮组装上下文、调用模型、分发工具、回填结果；
+      上下文管理、工具、护栏、生态、持久化，<b>全部是被循环调用的模块</b>。</p>
+
+    <div class="inbound rv" style="margin-top:1.2rem">↓<span>用户需求进入循环（一句话即可）</span></div>
+    <div class="hub">
+      <div class="loopbox rv">
+        <div class="lt">AGENT LOOP</div>
+        <div class="ls">唯一入口 · while 循环 · 直到满足停止条件</div>
+        <div class="phases">
+          <div class="backcol"><div class="cap">↻</div><div class="bar"></div><div class="cap" style="font-size:.7em; writing-mode:vertical-rl; letter-spacing:.2em;">下一轮</div></div>
+          <div class="phase"><div class="pht"><i>①</i>组装上下文</div>
+            <p>system 提示 + 工具清单 + 对话历史 → 拼成本轮请求</p></div>
+          <div class="parrow">↓</div>
+          <div class="phase"><div class="pht"><i>②</i>调用模型（流式）</div>
+            <p>LLM 返回文本增量或 <b>tool_call</b>（要做什么动作）</p></div>
+          <div class="parrow">↓</div>
+          <div class="phase"><div class="pht"><i>③</i>分发工具调用</div>
+            <p>过安全闸门 → 执行工具（读文件 / 跑命令 / 调 API）</p></div>
+          <div class="parrow">↓</div>
+          <div class="phase"><div class="pht"><i>④</i>回填结果 + 管预算</div>
+            <p>工具结果喂回上下文；检查 token 预算，必要时压缩 → <b>回到 ①</b></p></div>
+        </div>
+      </div>
+      <div class="sats rv">
+        <div class="sat"><div class="hook">⟵ loop 每轮第④步调用</div><div class="st2">上下文管理</div>
+          <p>token 估算 → 超预算找<b>安全切点</b> → 摘要压缩。<b>上下文是有限资源</b>，必须像预算一样经营。</p></div>
+        <div class="sat"><div class="hook">⟵ loop 收到 tool_call 时调用</div><div class="st2">工具系统</div>
+          <p>每个工具有<b>契约</b>（名称 / 描述 / 参数 schema / 超时）；同轮多个调用<b>并行执行</b>。<b>工具是模型唯一的动作形式</b>。</p></div>
+        <div class="sat"><div class="hook">⟵ loop 每轮第②步调用</div><div class="st2">LLM 适配层</div>
+          <p>流式接口以<b>参数注入</b>——换模型厂商，<b>循环一行不改</b>；失败不抛异常，编码进事件流。</p></div>
+        <div class="sat"><div class="hook">⟵ loop 第③步执行前后过闸</div><div class="st2">安全护栏</div>
+          <p>危险操作<b>先审批</b>、敏感路径<b>直接拦截</b>、输出<b>脱敏</b>、重复调用<b>强停</b>——能干活的系统必须有闸门。</p></div>
+        <div class="sat"><div class="hook">⟵ 工具从哪里来</div><div class="st2">生态插座</div>
+          <p>内置工具 + <b>MCP</b>（接外部工具服务）+ <b>Skills</b>（按需加载的工作流知识）——能力即插即用。</p></div>
+        <div class="sat"><div class="hook">⟵ loop 每轮落账</div><div class="st2">会话持久化</div>
+          <p>逐行追加、<b>逐行容错</b>——崩溃后重开，从日志恢复现场接着干。</p></div>
+      </div>
+    </div>
+    <div class="outbound rv hubnote">↓<span>停止条件满足（任务完成 / 截断 / 中断 / 出错）→ 交付结果</span></div>
+
+    <p class="lead rv" style="margin-top:1.4rem">
+      一句话：<b>模型负责决策，循环负责驱动，其余模块负责让决策能落地、可恢复、不闯祸。</b>
+      接下来的七个问题，全部由这张图上的某个模块回答。
+    </p>
+  </div>
+</section>
+
+<!-- ================= 02 抛出问题 ================= -->
+<section id="questions">
+  <div class="wrap">
+    <div class="kicker rv">02 · 问题 — 直击要害的七问</div>
+    <h2 class="rv">把技术难点翻译成<em>具体的问题</em></h2>
+    <p class="lead rv">这些不是假设——每一个都是我在实现过程中真实撞上、并记入答疑日志的问题：</p>
+    <div class="qlist">
+      <div class="qcard rv"><div class="qn">Q1</div>
+        <div class="qt">LLM 的输入窗口是有限的——对话轮次一多、工具结果一长，上下文就超窗了，怎么办？</div>
+        <div class="qa-tag">→ <b>A1</b> 上下文管理</div></div>
+      <div class="qcard rv"><div class="qn">Q2</div>
+        <div class="qt">模型只会生成文本——它怎么真正「动手」：读文件、写代码、跑命令？</div>
+        <div class="qa-tag">→ <b>A2</b> 工具调用机制</div></div>
+      <div class="qcard rv"><div class="qn">Q3</div>
+        <div class="qt">模型会传错参数、工具会失败、agent 会原地绕圈——出错之后系统怎么收场？</div>
+        <div class="qa-tag">→ <b>A3</b> 错误处理</div></div>
+      <div class="qcard rv"><div class="qn">Q4</div>
+        <div class="qt">让 AI 碰真实的文件系统和终端——删库、泄密钥这类危险操作怎么防？</div>
+        <div class="qa-tag">→ <b>A4</b> 安全护栏</div></div>
+      <div class="qcard rv"><div class="qn">Q5</div>
+        <div class="qt">程序崩了、会话中断——重开之后还能接着干吗？为什么恢复后不报错？</div>
+        <div class="qa-tag">→ <b>A5</b> 会话与配对安全</div></div>
+      <div class="qcard rv"><div class="qn">Q6</div>
+        <div class="qt">要接新工具、加新技能、换模型厂商——要不要大改核心代码？</div>
+        <div class="qa-tag">→ <b>A6</b> 生态插座</div></div>
+      <div class="qcard rv"><div class="qn">Q7</div>
+        <div class="qt">任务干到一半，模型会不会忘了最初的指令？技能会不会悄悄失效？</div>
+        <div class="qa-tag">→ <b>A7</b> 指令常驻与自愈</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 03 我的答案载体：最小 harness ================= -->
+<section id="minimal">
+  <div class="wrap">
+    <div class="kicker rv">03 · 载体 — 我实现了一个最小 harness</div>
+    <h2 class="rv">五层 · 9 个模块 · <em>一个问题一个模块</em></h2>
+    <p class="lead rv">为了回答上面的问题，我从零写了一个极简 coding agent（学习项目 pi-from-scratch）。
+      <b>原则：核心不认识生态，依赖全靠参数注入；可读性优先于抽象。</b></p>
+    <div class="miniarch rv">
+      <div class="mrow"><div class="mn">5</div><div class="mt2">交互层</div>
+        <p>终端界面：单行输入 + 流式输出 + Ctrl+C 中断——只做 agent 本质需要的事</p></div>
+      <div class="mrow"><div class="mn">4</div><div class="mt2">拼装层 · 唯一入口</div>
+        <p>组合一切依赖（模型后端 / 工具 / 技能目录）；配置三级优先：<b>环境变量 &gt; 配置文件 &gt; 默认值</b>，密钥不落盘</p></div>
+      <div class="mrow core"><div class="mn">3</div><div class="mt2">核心层 ★ Loop</div>
+        <p>上一节的 AGENT LOOP 本体：while 循环 + 工具调度 + <b>上下文压缩</b>；两条红线——<b>配对安全、压缩安全</b></p></div>
+      <div class="mrow"><div class="mn">2</div><div class="mt2">LLM 适配层</div>
+        <p>流式接口参数化注入：<b>OpenAI 兼容 / Anthropic 双后端</b>，切换时核心一行不改</p></div>
+      <div class="mrow"><div class="mn">1</div><div class="mt2">生态层</div>
+        <p>内置工具 + MCP 外部工具 + Skills 技能——<b>三来源同名去重合并</b>，核心零依赖</p></div>
+    </div>
+    <div class="facts rv">
+      <span class="f"><b>100</b> 个单元测试全绿</span>
+      <span class="f">全程 <b>~1,800 行</b> TypeScript，一周可读完</span>
+      <span class="f">每个功能先记<b>「问题 + 方案 + 取舍」</b>再动手（答疑日志）</span>
+      <span class="f">对照精读：<b>pi / deepseek-harness</b> 源码</span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 04 逐问作答 ================= -->
+<section id="answers">
+  <div class="wrap">
+    <div class="kicker rv">04 · 作答 — 来自答疑日志的一手答案</div>
+    <h2 class="rv">七问七答，<em>不展示代码</em>，只讲机制</h2>
+    <div class="answers">
+
+      <div class="ans rv">
+        <div class="ahead"><div class="an">A1</div><div class="aq">上下文超窗了怎么办？——经营它，像经营预算</div></div>
+        <div class="mech">
+          <p><b>先估算，再行动</b>：按字符数近似估 token，用量到窗口的 80% 就提前动手——留出余量，绝不打满。</p>
+          <p><b>找安全切点</b>：从旧消息开始移除，但切点必须是完整消息边界、<b>绝不能切在工具调用与结果的中间</b>（切错一处，下次请求直接被 API 拒绝）。</p>
+          <p><b>摘要压缩</b>：让模型自己把旧对话总结成一条摘要，保留「系统提示 + 摘要 + 最近对话」继续干活。</p>
+          <p><b>两条压缩红线</b>：压缩失败时保留原文（<b>空摘要比没有摘要更危险</b>）；用户中断的瞬间不压缩（半新不旧的上下文最容易压出坏摘要）。</p>
+        </div>
+        <div class="deep"><b>生产级做法（深读补充）</b>：deepseek-harness 先剪枝再压缩（超长工具结果只留头尾）；压缩从最早可压缩区开始、保留尾部比例；摘要请求本身复用前缀缓存；<b>摘要不比原文短就拒绝压缩</b>。</div>
+      </div>
+
+      <div class="ans rv">
+        <div class="ahead"><div class="an">A2</div><div class="aq">只会生成文本的模型，怎么「动手」？——工具调用闭环</div></div>
+        <div class="mech">
+          <p><b>关键机制</b>：模型输出里可以携带结构化的「工具调用」（调哪个工具、什么参数）——这是它<b>唯一的动作形式</b>，文本不是动作。</p>
+          <p><b>每个工具是一份契约</b>：名称 + 用途描述 + 参数 schema + 超时。harness 负责校验、执行、把结果作为「感知」喂回上下文——模型看完结果决定下一步。</p>
+          <p><b>这就构成了闭环</b>：决策（模型）→ 行动（工具）→ 感知（结果回填）→ 再决策。学术界叫 ReAct，工程上就是 loop 的第②③④步。</p>
+          <p><b>确定性交给代码</b>：排序、统计、解析这类活让工具里的代码去干——模型只做路由，不做算术。</p>
+        </div>
+      </div>
+
+      <div class="ans rv">
+        <div class="ahead"><div class="an">A3</div><div class="aq">参数传错、工具失败、原地绕圈——怎么收场？</div></div>
+        <div class="mech">
+          <p><b>错误是给模型看的，不是给人看的</b>：参数校验失败返回结构化错误（哪个字段、什么问题）——模型读到后<b>自己纠正重试</b>，多数错误在循环内消化。</p>
+          <p><b>失败不炸循环</b>：工具错误、网络错误一律编码进事件流，循环永不因异常崩溃；对限流和服务器错误做<b>指数退避重试</b>。</p>
+          <p><b>超时兜底</b>：每个工具声明时限（读文件 10 秒、搜索 15 秒），到点把结果替换成超时错误——不让一个卡死的工具卡死整个 agent。</p>
+          <p><b>绕圈检测</b>：连续多次调用完全相同的工具 + 相同参数 = 死循环特征，强制停下交还控制权。</p>
+        </div>
+      </div>
+
+      <div class="ans rv">
+        <div class="ahead"><div class="an">A4</div><div class="aq">删库、泄密钥怎么防？——四道防线，闸门在执行前</div></div>
+        <div class="mech">
+          <p><b>第一道：事前审批</b>——删除文件、执行危险命令这类工具标记为「需审批」，执行前先问用户，一键放行或拒绝。</p>
+          <p><b>第二道：通用拦截</b>——不管模型怎么包装请求，触碰敏感路径（环境变量文件、SSH 密钥等）直接阻止，并告知原因。</p>
+          <p><b>第三道：事后脱敏</b>——工具结果里的密钥形态文本自动打码，再进入上下文。</p>
+          <p><b>第四道：防循环</b>——与 A3 共用的绕圈检测，从行为层面兜底。</p>
+        </div>
+        <div class="deep"><b>深读补充</b>：deepseek-harness 把这条总结为「<b>引导与执法分离</b>」——模型行为靠上下文内容引导，安全靠独立机制执法，两者互不越界：提示词永远不是安全边界。</p>
+      </div>
+
+      <div class="ans rv">
+        <div class="ahead"><div class="an">A5</div><div class="aq">崩了、中断了，重开还能接着干吗？——日志即真相</div></div>
+        <div class="mech">
+          <p><b>会话逐行落盘</b>：每条消息追加写日志——崩溃可能写出半行 JSON，恢复时<b>跳过损坏行</b>而不是丢弃全部历史。</p>
+          <p><b>配对安全（核心红线）</b>：API 要求每个工具调用必须有对应结果。用户中断时丢弃未完成的调用，并<b>为被跳过的调用补上错误结果</b>——保证任何时刻的会话都是合法的，恢复后不会报错。</p>
+          <p><b>重开 = 重放</b>：不存「内存状态」，恢复就是从日志重建上下文——单一真相，天然可审计。</p>
+        </div>
+        <div class="deep"><b>深读补充</b>：deepseek-harness 把这点做成制度——<b>日志是唯一权威</b>，所有「当前状态」都是从日志折叠出来的投影；连「删除」都只是投影替换，日志永不删。</p>
+      </div>
+
+      <div class="ans rv">
+        <div class="ahead"><div class="an">A6</div><div class="aq">接新工具、加技能、换模型——要改核心吗？——不用，一行不改</div></div>
+        <div class="mech">
+          <p><b>外部工具走 MCP 协议</b>：启动子进程、握手、发现工具清单、按需调用——外部服务的工具被适配成普通工具，<b>循环根本不知道它来自哪里</b>；某个服务连不上只警告，不阻塞启动。</p>
+          <p><b>技能（Skills）按需加载</b>：技能目录（名字 + 一句话描述）常驻系统提示；模型判断任务匹配后，再用「加载技能」工具取出完整指令——<b>不匹配的技能一个字都不占上下文</b>。</p>
+          <p><b>换模型靠接口注入</b>：模型调用以参数形式传入（OpenAI 兼容 / Anthropic 双后端）——切换厂商，<b>agent 核心一行不改</b>。</p>
+          <p><b>架构保证</b>：核心层不认识任何具体工具，全部依赖由拼装层注入——扩展是「加」，不是「改」。</p>
+        </div>
+      </div>
+
+      <div class="ans rv">
+        <div class="ahead"><div class="an">A7</div><div class="aq">干到一半，模型忘了最初的指令怎么办？——常驻 + 自愈</div></div>
+        <div class="mech">
+          <p><b>我踩过的坑（答疑日志原案）</b>：第一版技能用关键词激活——「帮我看看这段代码有什么问题」不含「审查」两个字就不生效；关键词枚举不完；而且只在当轮生效，<b>下一轮指令就淡出了</b>。</p>
+          <p><b>改版方案</b>：目录常驻 + <b>模型自己判断何时加载</b>；加载出的完整指令留在对话历史里，<b>后续轮次天然可见，无需重载</b>。</p>
+          <p><b>压缩后自愈</b>：即使摘要把指令压丢了，目录还在系统提示里——模型可以随时重新加载，<b>不依赖任何内存状态</b>。</p>
+          <p><b>任务进度同理</b>：待办清单用「整表替换」式工具维护——最新清单永远贴在上下文尾部，天然保鲜、零重注入。</p>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="punch rv">
+      七个问题，一个答案：<em>把「一次文本生成」包进「循环 + 上下文管理 + 工具 + 护栏 + 生态 + 日志」</em>，
+      模型就从聊天框变成了能交付项目的 agent。
+      <small>以上机制全部出自本项目答疑日志（问题 + 方案 + 取舍），并与 pi / deepseek-harness 生产实现交叉验证。</small>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    汇报依据：亲手实现的学习项目 <b>pi-from-scratch</b> 及 <b>docs/答疑日志.md</b> ·
+    生产级对照：<b>deepseek-harness</b> 源码答疑 19 条 ·
+    文献背景：<b>ReAct (2022)</b> · <b>Anthropic Building Effective Agents / Context Engineering (2024–25)</b>
+  </div>
+</footer>
+
+<script>
+  // 长页滚动入场：进入视口后加 .in
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((en) => { if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); } });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.rv').forEach((el) => io.observe(el));
+</script>
+</body>
+</html>

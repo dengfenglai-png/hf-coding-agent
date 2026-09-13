@@ -1,0 +1,36 @@
+flowchart TB
+    subgraph L0["交互层"]
+        TUI["tui.ts 终端 UI<br/>输入 · 流式输出 · 审批"]
+    end
+
+    subgraph L1["拼装层（唯一入口）"]
+        CLI["cli.ts<br/>配置加载 · session 持久化<br/>工具组装 · 安全策略"]
+    end
+
+    subgraph L2["Agent 核心"]
+        AGENT["agent.ts · Agent Loop<br/>流式 → tool_call → 执行 → 回填 → 循环"]
+        CM["context-management.ts<br/>token 估算 · 压缩 · 循环检测"]
+    end
+
+    subgraph L3["LLM 适配层"]
+        LLM["llm.ts · OpenAI 兼容 SSE<br/>重试退避 · 消息转换"]
+        ANTH["anthropic.ts · Anthropic<br/>StreamFn 注入多 provider"]
+    end
+
+    subgraph L4["工具 & 生态层"]
+        TOOLS["tools.ts 内置工具<br/>read/write/grep/glob/bash/todo"]
+        MCP["mcp.ts MCP Client<br/>JSON-RPC stdio 接外部 server"]
+        SKILLS["skills.ts Skill<br/>目录 + load_skill 渐进披露"]
+    end
+
+    TUI -->|用户输入| CLI
+    CLI -->|context + tools| AGENT
+    AGENT <-->|流式事件| LLM
+    AGENT <-->|流式事件| ANTH
+    AGENT --> CM
+    AGENT -->|tool_call| TOOLS
+    AGENT -->|tool_call| MCP
+    AGENT -->|load_skill| SKILLS
+    CLI -.->|组装| TOOLS
+    CLI -.->|组装| MCP
+    CLI -.->|组装| SKILLS

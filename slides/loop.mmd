@@ -1,0 +1,20 @@
+sequenceDiagram
+    autonumber
+    participant U as 用户 / TUI
+    participant A as agent.ts
+    participant L as llm.ts
+    participant T as 工具 tools/mcp/skills
+
+    U->>A: 输入 prompt
+    loop 直到模型不再调工具
+        A->>L: stream(context, tools)
+        L-->>A: text_delta / tool_call / done
+        alt 有 tool_call
+            A->>T: execute(args) 校验→审批→执行
+            T-->>A: result
+            A->>A: 回填 context.messages
+        else 无 tool_call（end_turn）
+            A-->>U: turn_end
+        end
+    end
+    Note over A: 每轮前：上下文压缩（token 估算 + cut point）<br/>每轮后：循环检测 / shouldStopAfterTurn

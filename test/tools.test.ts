@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { promises as fs } from 'node:fs'
 import * as path from 'node:path'
 import * as os from 'node:os'
-import { builtinTools } from '../src/tools.js'
+import { builtinTools, validateArgs, isDangerousCommand } from '../src/tools.js'
 import type { AgentTool } from '../src/agent.js'
 
 let tmpDir: string
@@ -17,8 +17,8 @@ function findTool(tools: AgentTool[], name: string): AgentTool {
 }
 
 describe('builtinTools', () => {
-  it('返回 4 个工具', () => {
-    expect(builtinTools().map(t => t.name).sort()).toEqual(['edit', 'read_file', 'run_bash', 'write_file'])
+  it('返回 7 个工具', () => {
+    expect(builtinTools().map(t => t.name).sort()).toEqual(['edit', 'glob', 'grep', 'read_file', 'run_bash', 'todo_write', 'write_file'])
   })
 
   it('read_file 读取文件', async () => {
@@ -58,5 +58,103 @@ describe('builtinTools', () => {
   it('run_bash 执行命令', async () => {
     const bash = findTool(builtinTools(), 'run_bash')
     expect((await bash.execute({ command: 'echo hello' })).trim()).toBe('hello')
+  })
+})
+
+describe('validateArgs', () => {
+  const schema = {
+    type: 'object',
+    properties: {
+      path: { type: 'string', description: '文件路径' },
+      count: { type: 'number' },
+      verbose: { type: 'boolean' },
+    },
+    required: ['path'],
+  }
+
+  it('合法参数 → 空数组', () => {
+    expect(validateArgs(schema, { path: '/tmp/a', count: 1, verbose: true })).toEqual([])
+  })
+
+  it('缺少 required → 违规', () => {
+    expect(validateArgs(schema, { count: 1 })).toEqual(['missing required property "path"'])
+  })
+
+  it('类型错误 → 违规', () => {
+    expect(validateArgs(schema, { path: 123 })).toEqual(['"path" must be a string'])
+  })
+
+  it('非对象 args → 违规', () => {
+    expect(validateArgs(schema, 'not object')).toEqual(['expected an object'])
+  })
+})
+
+describe('isDangerousCommand', () => {
+  it('危险命令 → true', () => {
+    expect(isDangerousCommand('rm -rf /')).toBe(true)
+    expect(isDangerousCommand('rm -r node_modules')).toBe(true)
+    expect(isDangerousCommand('rm --recursive dist')).toBe(true)
+    expect(isDangerousCommand('git push --force origin main')).toBe(true)
+    expect(isDangerousCommand('git push -f')).toBe(true)
+    expect(isDangerousCommand('git reset --hard HEAD')).toBe(true)
+    expect(isDangerousCommand('sudo rm file')).toBe(true)
+    expect(isDangerousCommand('mkfs.ext4 /dev/sda')).toBe(true)
+    expect(isDangerousCommand('dd if=/dev/zero of=/dev/sda')).toBe(true)
+    expect(isDangerousCommand('reboot')).toBe(true)
+  })
+
+  it('安全命令 → false', () => {
+    expect(isDangerousCommand('echo hello')).toBe(false)
+    expect(isDangerousCommand('git status')).toBe(false)
+    expect(isDangerousCommand('ls -la')).toBe(false)
+    expect(isDangerousCommand('rm file.txt')).toBe(false) // 无递归标志，不算高危
+  })
+})
+
+describe('glob 和 grep', () => {
+  it('glob 匹配文件', async () => {
+    await fs.mkdir(path.join(tmpDir, 'src'), { recursive: true })
+    await fs.writeFile(path.join(tmpDir, 'src', 'a.ts'), 'x')
+    await fs.writeFile(path.join(tmpDir, 'src', 'b.js'), 'y')
+    const result = await findTool(builtinTools(), 'glob').execute({ pattern: '**/*.ts', path: tmpDir })
+    expect(result).toContain('src/a.ts')
+    expect(result).not.toContain('b.js')
+  })
+
+  it('grep 匹配内容', async () => {
+    await fs.writeFile(path.join(tmpDir, 'a.txt'), 'hello world\nfoo bar\n')
+    const result = await findTool(builtinTools(), 'grep').execute({ pattern: 'hello', path: tmpDir })
+    expect(result).toContain('a.txt:1:hello world')
+  })
+
+  it('grep 忽略 node_modules', async () => {
+    await fs.mkdir(path.join(tmpDir, 'node_modules', 'dep'), { recursive: true })
+    await fs.writeFile(path.join(tmpDir, 'node_modules', 'dep', 'x.ts'), 'secret')
+    await fs.writeFile(path.join(tmpDir, 'main.ts'), 'secret')
+    const result = await findTool(builtinTools(), 'grep').execute({ pattern: 'secret', path: tmpDir })
+    expect(result).toContain('main.ts')
+    expect(result).not.toContain('node_modules')
+  })
+})
+
+describe('todo_write', () => {
+  it('格式化 todo 列表（4 种状态）', async () => {
+    const result = await findTool(builtinTools(), 'todo_write').execute({
+      todos: [
+        { content: '重构 llm.ts', status: 'completed' },
+        { content: '重构 agent.ts', status: 'in_progress' },
+        { content: '写测试', status: 'pending' },
+        { content: '修 bug', status: 'failed' },
+      ],
+    })
+    expect(result).toContain('✓ 1. 重构 llm.ts')
+    expect(result).toContain('▶ 2. 重构 agent.ts')
+    expect(result).toContain('○ 3. 写测试')
+    expect(result).toContain('✗ 4. 修 bug')
+  })
+
+  it('空列表 → no todos', async () => {
+    const result = await findTool(builtinTools(), 'todo_write').execute({ todos: [] })
+    expect(result).toBe('no todos')
   })
 })

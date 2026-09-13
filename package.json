@@ -19,9 +19,9 @@
     "typescript-tutorial"
   ],
   "type": "module",
-  "bin": { "pi-from-scratch": "./dist/cli.js" },
+  "bin": { "hf-coding-agent": "./dist/cli.js" },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node -e \"require('fs').chmodSync('dist/cli.js', 0o755)\"",
     "dev": "tsx src/cli.ts",
     "generate:traces": "tsx scripts/generate-traces.ts",
     "test": "vitest run"
