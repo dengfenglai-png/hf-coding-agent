@@ -23,6 +23,17 @@ export function dimText(s: string): string {
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
+/** tool_result 显示上限：超过则头 2 行 + 折叠提示 + 尾 1 行（错误在尾部，保留） */
+const RESULT_DISPLAY_LINES = 4
+
+/** 显示层折叠：长工具结果收成头尾 + 提示行（完整内容仍进 context / session） */
+function foldLongResult(result: string): string {
+  const lines = result.split('\n')
+  if (lines.length <= RESULT_DISPLAY_LINES + 1) return result
+  const hidden = lines.length - 3
+  return [...lines.slice(0, 2), dimText(`… 已折叠 ${hidden} 行`), lines[lines.length - 1]].join('\n')
+}
+
 export class Tui {
   private rl: readline.Interface | null = null
   private onPromptCb: ((text: string) => void) | null = null
@@ -34,6 +45,27 @@ export class Tui {
   private spinnerTimer: NodeJS.Timeout | null = null
   private spinnerLabel = ''
   private spinnerStart = 0
+
+  // ===== 回合末工具区折叠 =====
+  // lineNo = 已写入的 \n 总数（当前行号，0 基）。折叠用相对 delta 定位，
+  // 不受 readline 提示行/长输入换行影响；状态在 setBusy(true) 与 /clear 时重置。
+  private lineNo = 0
+  private foldStart: number | null = null  // 本轮首个 tool_call 标签所在行
+  private foldEnd = 0                      // 区域结束行（半开区间 [foldStart, foldEnd)）
+  private toolKinds = new Map<string, number>()
+  private folded = false
+
+  /** 所有显示写入的统一出口：附带 \n 行号计数，供折叠做光标定位 */
+  private write(s: string): void {
+    process.stdout.write(s)
+    this.lineNo += (s.match(/\n/g) ?? []).length
+  }
+
+  private resetFoldState(): void {
+    this.foldStart = null
+    this.foldEnd = 0
+    this.toolKinds.clear()
+  }
 
   /** 注册 prompt 回调 */
   onPrompt(cb: (text: string) => void): void {
@@ -96,6 +128,10 @@ export class Tui {
   /** agent 开始运行时调用，阻止新输入 */
   setBusy(busy: boolean): void {
     this.busy = busy
+    if (busy) {
+      this.resetFoldState()
+      this.folded = false
+    }
     if (!busy) this.prompt()  // agent 结束，恢复输入
   }
 
@@ -112,7 +148,7 @@ export class Tui {
     this.spinnerTimer = setInterval(() => {
       const frame = SPINNER_FRAMES[i++ % SPINNER_FRAMES.length]
       const secs = ((Date.now() - this.spinnerStart) / 1000).toFixed(0)
-      process.stdout.write(`\r${dimText(`${frame} ${this.spinnerLabel} ${secs}s`)}\x1b[K`)
+      this.write(`\r${dimText(`${frame} ${this.spinnerLabel} ${secs}s`)}\x1b[K`)
     }, 80)
   }
 
@@ -121,30 +157,57 @@ export class Tui {
     if (!this.spinnerTimer) return
     clearInterval(this.spinnerTimer)
     this.spinnerTimer = null
-    if (interactive) process.stdout.write('\r\x1b[K')
+    if (interactive) this.write('\r\x1b[K')
   }
 
   /** 流式打印 assistant 文本 delta */
   printText(delta: string): void {
     this.stopSpinner()
-    process.stdout.write(delta)
+    this.write(delta)
   }
 
   /** 打印 tool 调用 */
   printToolCall(name: string, args: unknown): void {
     this.stopSpinner()
-    process.stdout.write(`\n${dimText(`[tool: ${name}]`)} ${JSON.stringify(args)}\n`)
+    this.write('\n')
+    if (this.foldStart === null) this.foldStart = this.lineNo  // 标签所在行
+    this.write(`${dimText(`[tool: ${name}]`)} ${JSON.stringify(args)}\n`)
+    this.foldEnd = this.lineNo
+    this.toolKinds.set(name, (this.toolKinds.get(name) ?? 0) + 1)
   }
 
-  /** 打印 tool 结果 */
+  /** 打印 tool 结果（显示层超长截断，进 context 的完整内容不受影响） */
   printToolResult(name: string, result: string): void {
     this.stopSpinner()
-    process.stdout.write(`${dimText(`[result: ${name}]`)} ${result}\n`)
+    this.write(`${dimText(`[result: ${name}]`)} ${interactive ? foldLongResult(result) : result}\n`)
+    this.foldEnd = this.lineNo
+  }
+
+  /**
+   * 回合末折叠：把本轮 [首个 tool_call 行, 最后 tool_result 行) 区域收成一行摘要。
+   * 光标上移到区域首行 → 重写摘要行 → DL 删除剩余区域行（下方内容自动上移）。
+   * 事件过少或区域已滚出屏幕则放弃折叠（输出保持原样），非 interactive 时 no-op。
+   */
+  foldTurn(): void {
+    if (!interactive || this.folded || this.foldStart === null) { this.resetFoldState(); return }
+    const region = this.foldEnd - this.foldStart
+    const delta = this.lineNo - this.foldStart
+    const rows = process.stdout.rows || 24  // 无尺寸 pty（CI/script）报 0，需兜底
+    const totalCalls = [...this.toolKinds.values()].reduce((a, b) => a + b, 0)
+    if (totalCalls < 3 || region < 4 || delta > rows - 2) { this.resetFoldState(); return }
+
+    const summary = [...this.toolKinds.entries()].map(([n, c]) => (c > 1 ? `${n}×${c}` : n)).join(', ')
+    this.write(`\x1b[${delta}A`)  // 光标回到区域首行
+    this.write(dimText(`⋮ 已折叠 ${totalCalls} 个工具调用（${summary}）`) + '\n')
+    this.write(`\x1b[${region - 1}M`)  // 删除剩余旧区域行，下方内容上移
+    this.lineNo -= region - 1
+    this.resetFoldState()
+    this.folded = true
   }
 
   /** 回合结束：换行 */
   printTurnEnd(): void {
-    process.stdout.write('\n')
+    this.write('\n')
   }
 
   /** 询问用户是否允许执行某操作（审批），返回 true/false；无法询问时返回 false（fail-closed） */
@@ -158,7 +221,10 @@ export class Tui {
 
   /** 清屏并把光标归位 */
   clearScreen(): void {
-    process.stdout.write('\x1b[2J\x1b[H')
+    this.write('\x1b[2J\x1b[H')
+    this.lineNo = 0
+    this.resetFoldState()
+    this.folded = false
   }
 
   /** 停止 TUI，清理监听器 */

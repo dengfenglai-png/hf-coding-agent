@@ -308,6 +308,7 @@ async function main() {
             if (ev.stopReason === 'error') tui.printText('\n[error occurred]')
             if (ev.stopReason === 'stopped') tui.printText('\n[stopped by shouldStopAfterTurn]')
             tui.stopSpinner()
+            tui.foldTurn()  // 回合末把工具区收成一行摘要（显示层，不影响 context）
             tui.printTurnEnd()
             tui.printText(dimText(`· ${context.messages.length} 条消息 · ${((Date.now() - turnStart) / 1000).toFixed(1)}s\n`))
             break

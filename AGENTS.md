@@ -55,7 +55,7 @@
 
 ## 保持极简，只做必要的事
 
-不引入不必要的框架与抽象。TUI 不做 differential renderer、component 树、markdown 渲染——这些是"终端 UI 框架"的功课，不是"手撕 agent"的灵魂。只做 agent 本质需要的东西。
+不引入不必要的框架与抽象。TUI 不做 differential renderer、component 树、markdown 渲染——这些是"终端 UI 框架"的功课，不是"手撕 agent"的灵魂。只做 agent 本质需要的东西。唯一例外：回合末工具区的定点行重写（P4-3 折叠），只为滚动区可读性，不引入渲染层。
 
 ## 可读性优先于抽象
 
@@ -69,7 +69,7 @@
 |------|------|
 | `src/llm.ts` | 统一 LLM API：OpenAI 兼容 SSE → 四种事件流（text_delta / tool_call / done / error） |
 | `src/agent.ts` | Agent loop：while 循环 + 工具调用 + 上下文压缩（项目灵魂） |
-| `src/tui.ts` | 极简终端界面：单行输入 + 流式输出 + Ctrl+C |
+| `src/tui.ts` | 极简终端界面：单行输入 + 流式输出 + Ctrl+C + 回合末工具区折叠（显示层，不影响 context） |
 | `src/tools.ts` | 内置工具（纯函数，不碰 agent 状态） |
 | `src/skills.ts` | Skill 机制：name/description 目录进 system prompt，模型用 load_skill 按需加载指令（纯函数） |
 | `src/cli.ts` | 拼装层 + session 持久化（唯一入口） |

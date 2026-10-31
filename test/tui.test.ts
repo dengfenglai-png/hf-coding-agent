@@ -113,6 +113,93 @@ describe('spinner 与颜色', () => {
     tui.stopSpinner()
     expect(writes).toEqual([])
   })
+
+  it('interactive 下超长 tool_result 显示层截断（头 2 + 提示 + 尾 1）', () => {
+    setInteractive(true)
+    const tui = new Tui()
+    const result = Array.from({ length: 10 }, (_, i) => `line${i + 1}`).join('\n')
+    tui.printToolResult('read_file', result)
+    const out = writes.join('')
+    expect(out).toContain('line1')
+    expect(out).toContain('line2')
+    expect(out).toContain('已折叠 7 行')
+    expect(out).toContain('line10')
+    expect(out).not.toContain('line5')  // 中间行不显示
+
+    writes = []
+    tui.printToolResult('read_file', 'short')  // 短结果不截断
+    expect(writes.join('')).toContain('short')
+    expect(writes.join('')).not.toContain('已折叠')
+  })
+
+  it('非 interactive 下 tool_result 直出完整内容', () => {
+    setInteractive(false)
+    const tui = new Tui()
+    const result = Array.from({ length: 10 }, (_, i) => `line${i + 1}`).join('\n')
+    tui.printToolResult('read_file', result)
+    expect(writes.join('')).toContain('line5')
+    expect(writes.join('')).not.toContain('已折叠')
+  })
+
+  it('foldTurn：≥3 个工具调用时区域收成一行摘要（上移 + 重写 + DL 删行）', () => {
+    vi.useFakeTimers()
+    setInteractive(true)
+    const tui = new Tui()
+    tui.printText('思考中…\n')
+    for (let i = 0; i < 3; i++) {
+      tui.printToolCall('read_file', { path: `f${i}.txt` })
+      tui.printToolResult('read_file', `内容${i}\n第二行`)
+    }
+    tui.printText('最终回答\n')
+    writes = []
+    tui.foldTurn()
+    const out = writes.join('')
+    // 区域 = 3×(call 标签+前置空行) + 3×(2 行 result)，含 call 间空行共 11 行；
+    // delta 12 = 区域 11 行 + 下方「最终回答」1 行
+    expect(out).toContain('\x1b[12A')
+    expect(out).toContain('⋮ 已折叠 3 个工具调用（read_file×3）')
+    expect(out).toContain('\x1b[10M')     // 删除摘要行之外的 10 行旧区域，下方内容上移
+  })
+
+  it('foldTurn：事件不足 3 个时不折叠', () => {
+    setInteractive(true)
+    const tui = new Tui()
+    tui.printToolCall('read_file', { path: 'a.txt' })
+    tui.printToolResult('read_file', 'hi')
+    writes = []
+    tui.foldTurn()
+    expect(writes).toEqual([])
+  })
+
+  it('foldTurn：非 interactive 时 no-op', () => {
+    setInteractive(false)
+    const tui = new Tui()
+    for (let i = 0; i < 3; i++) {
+      tui.printToolCall('grep', { pattern: 'x' })
+      tui.printToolResult('grep', 'm1\nm2')
+    }
+    writes = []
+    tui.foldTurn()
+    expect(writes).toEqual([])
+  })
+
+  it('setBusy(true) 重置折叠状态：新回合重新计数', () => {
+    setInteractive(true)
+    const tui = new Tui()
+    tui.setBusy(true)
+    for (let i = 0; i < 3; i++) {
+      tui.printToolCall('grep', { pattern: 'x' })
+      tui.printToolResult('grep', 'm')
+    }
+    tui.foldTurn()  // 本轮折叠发生
+    tui.setBusy(false)
+
+    tui.setBusy(true)  // 新回合：折叠状态已重置，不会把旧区域二次折叠
+    tui.printToolCall('grep', { pattern: 'y' })
+    writes = []
+    tui.foldTurn()  // 只有 1 个事件 → 不折叠
+    expect(writes).toEqual([])
+  })
 })
 
 describe('parseSlashCommand', () => {
