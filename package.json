@@ -1,28 +1,28 @@
 {
-  "name": "pi-from-scratch",
+  "name": "hf-coding-agent",
   "version": "0.1.0",
-  "description": "A 600-line TypeScript guide to building your own pi-agent from scratch.",
+  "description": "本地优先的终端 Coding Agent Harness——从零构建，可逐步演进为安全执行平台。",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SaladDay/pi-from-scratch.git"
+    "url": "git+https://github.com/dengfenglai-png/hf-coding-agent.git"
   },
   "keywords": [
     "ai-agent",
     "coding-agent",
+    "agent-harness",
     "agent-loop",
     "llm",
     "tool-calling",
-    "typescript",
-    "pi-agent",
-    "llm-agent",
-    "typescript-tutorial"
+    "tui",
+    "typescript"
   ],
   "type": "module",
   "bin": { "hf-coding-agent": "./dist/cli.js" },
   "scripts": {
     "build": "tsc && node -e \"require('fs').chmodSync('dist/cli.js', 0o755)\"",
     "dev": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
     "generate:traces": "tsx scripts/generate-traces.ts",
     "test": "vitest run"
   },

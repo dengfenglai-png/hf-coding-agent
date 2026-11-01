@@ -1,30 +1,14 @@
-# PI from Scratch
+# hf-coding-agent
 
-<p align="center">
-  <a href="https://pi-from-scratch.vercel.app">
-    <img src="./web/public/og.png" alt="PI from Scratch：从零手撕一个 Coding Agent" width="80%">
-  </a>
-</p>
+**本地优先的终端 Coding Agent Harness**：cd 进任意项目目录，一条命令进入 agent——读写文件、改代码、执行命令，带上下文压缩、工具审批、会话持久化与项目级会话隔离。
 
-从零手写一个能读文件、改代码、执行命令的 TypeScript coding agent。
+> 从零构建、可逐步演进为安全执行平台。演进路线（P0–P8：事件日志 → 脑手分离 → Sandbox → 密钥权限 → 可观测评测…）见 [docs/roadmap.md](docs/roadmap.md)。
 
-项目沿着 [pi](https://github.com/earendil-works/pi) 的数据流拆解，需要什么、我们造什么，所有组件都是符合直觉的。
+本项目衍生自教程 [PI from Scratch](https://github.com/SaladDay/pi-from-scratch)（MIT），保留了其完整提交历史与教学章节；内部原理想从头弄明白，教程依然是最好的入口（见下文「教程」章节）。
 
-删除 pi 的工程细节，留下 pi 的核心思想。
+## 运行 hf-coding-agent
 
-放轻松，这是一篇文章，不是一本书，你会很容易看懂。
-
-网站把文章和源码放在一起。阅读推进时，右侧编辑器会逐步补全代码，当你看完的时候，nano-pi 的代码也会全部呈现在编辑器中。
-
-同时设计了一个 Trace 跟踪，可以打断点逐行过代码，希望能帮助大家理解代码执行流。
-
-[在线阅读 PI from Scratch](https://pi-from-scratch.vercel.app)
-
-> 文章保留古法手敲，尽可能没有ai味，希望大家读的开心。
-
-## 运行 nano-pi
-
-需要 Node.js 22 或更高版本，以及一个 OpenAI 兼容 API。
+需要 Node.js 22 或更高版本，以及一个 OpenAI 兼容（或 Anthropic 协议）API。
 
 ```bash
 npm install
@@ -57,6 +41,20 @@ API key 有三种给法，按优先级：`--api-key` 参数 > `NANOPI_API_KEY` �
 会话内命令：`/help` `/clear` `/new` `/model` `/exit`；`Ctrl+C` 中断当前回合，连按两次或空闲时按下退出。
 
 线上 trace 是预先生成的静态数据，浏览网站不会发起模型请求。
+
+## 教程：从零手撕一个 Coding Agent（上游 PI from Scratch）
+
+<p align="center">
+  <a href="https://pi-from-scratch.vercel.app">
+    <img src="./web/public/og.png" alt="PI from Scratch：从零手撕一个 Coding Agent" width="80%">
+  </a>
+</p>
+
+教程沿着 [pi](https://github.com/earendil-works/pi) 的数据流拆解，需要什么、我们造什么，所有组件都是符合直觉的。删除 pi 的工程细节，留下 pi 的核心思想。放轻松，这是一篇文章，不是一本书，你会很容易看懂。
+
+网站把文章和源码放在一起。阅读推进时，右侧编辑器会逐步补全代码，当你看完的时候，nano-pi 的代码也会全部呈现在编辑器中。同时设计了一个 Trace 跟踪，可以打断点逐行过代码，帮助理解代码执行流。
+
+[在线阅读 PI from Scratch](https://pi-from-scratch.vercel.app) · 教程保留古法手敲，尽可能没有 ai 味。
 
 ## 本地运行教学网站
 
