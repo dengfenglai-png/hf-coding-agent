@@ -9,6 +9,7 @@ import {
   findCompactCut,
   isSummaryWorthCompacting,
   detectLoop,
+  repairOpenToolCalls,
 } from '../src/context-management.js'
 import type { ContentBlock, Context, Message } from '../src/llm.js'
 
@@ -126,5 +127,58 @@ describe('detectLoop', () => {
       ],
     }
     expect(detectLoop(context)).toBe(false)
+  })
+})
+
+describe('repairOpenToolCalls（P1-2 崩溃恢复）', () => {
+  const dangling: Message = {
+    role: 'assistant',
+    content: [
+      { type: 'text', text: '我来读取' },
+      { type: 'tool_use', id: 'call_1', name: 'read_file', input: { path: 'a.txt' } },
+    ] as ContentBlock[],
+  }
+
+  it('无悬空调用 → 空数组（正常结束 / abort 丢弃后的对话不需要修复）', () => {
+    expect(repairOpenToolCalls([])).toEqual([])
+    expect(repairOpenToolCalls([{ role: 'user', content: 'hi' }])).toEqual([])
+    expect(repairOpenToolCalls([
+      dangling,
+      { role: 'tool', tool_use_id: 'call_1', content: 'content' },
+    ])).toEqual([])
+  })
+
+  it('悬空 tool_use → 合成 error 结果，配对完整（API 不再 400）', () => {
+    const repair = repairOpenToolCalls([dangling])
+    expect(repair).toHaveLength(1)
+    expect(repair[0]).toMatchObject({ role: 'tool', tool_use_id: 'call_1' })
+    expect((repair[0] as { content: string }).content).toContain('interrupted')
+  })
+
+  it('部分配对：只为未回答的调用补结果', () => {
+    const messages: Message[] = [
+      { role: 'assistant', content: [
+        { type: 'tool_use', id: 'a', name: 'read_file', input: {} },
+        { type: 'tool_use', id: 'b', name: 'read_file', input: {} },
+      ] as ContentBlock[] },
+      { role: 'tool', tool_use_id: 'a', content: 'ok' },  // b 悬空（kill 在两个结果之间）
+    ]
+    const repair = repairOpenToolCalls(messages)
+    expect(repair).toHaveLength(1)
+    expect(repair[0]).toMatchObject({ role: 'tool', tool_use_id: 'b' })
+  })
+
+  it('多个悬空调用各补一条，且消息名出现在错误文本里', () => {
+    const messages: Message[] = [
+      { role: 'assistant', content: [
+        { type: 'tool_use', id: 'a', name: 'run_bash', input: {} },
+        { type: 'tool_use', id: 'b', name: 'glob', input: {} },
+      ] as ContentBlock[] },
+    ]
+    const repair = repairOpenToolCalls(messages)
+    expect(repair).toHaveLength(2)
+    expect(repair.map(m => (m as { tool_use_id: string }).tool_use_id)).toEqual(['a', 'b'])
+    expect((repair[0] as { content: string }).content).toContain('run_bash')
+    expect((repair[1] as { content: string }).content).toContain('glob')
   })
 })

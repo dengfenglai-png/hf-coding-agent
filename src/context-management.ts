@@ -3,7 +3,7 @@
 // 估算用固定密度启发式（参考 deepseek-harness token-meter），
 // 但系数取 2 而非 4：pi 以中文对话为主，中文 1 字≈1~2 token，/4 会低估约 4 倍。
 
-import type { ContentBlock, Context, Message } from './llm.js'
+import { buildToolResultMessages, type ContentBlock, type Context, type Message } from './llm.js'
 
 /** 固定密度：每 2 字符 ≈ 1 token（折中，兼顾中文对话与英文代码） */
 const CHARS_PER_TOKEN = 2
@@ -108,6 +108,32 @@ export function isSummaryWorthCompacting(summary: string, oldMessages: readonly 
   const summaryMessage: Message = { role: 'user', content: summary }
   const shadowedTokens = oldMessages.reduce((total, m) => total + estimateMessageTokens(m), 0)
   return estimateMessageTokens(summaryMessage) < shadowedTokens
+}
+
+/**
+ * 崩溃恢复（P1-2）：找出所有没有 tool 结果配对的 tool_use，合成 error 结果补齐配对，
+ * 保证恢复后 API 不报 400。正常流程不会留悬空（abort 路径会丢弃 tool_calls），
+ * 出现悬空即意味着进程在工具执行中途被 kill。修复 = 追加不改写（deepseek-harness 语义）；
+ * message 粒度的事件没有 started 标记，无法区分"没开始"与"结果未知"，统一按结果未知处理。
+ */
+export function repairOpenToolCalls(messages: readonly Message[]): Message[] {
+  const open: { id: string; name: string }[] = []
+  const answered = new Set<string>()
+  for (const msg of messages) {
+    if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+      for (const b of msg.content) {
+        if (b.type === 'tool_use') open.push({ id: b.id, name: b.name })
+      }
+    } else if (msg.role === 'tool') {
+      answered.add(msg.tool_use_id)
+    }
+  }
+  const unresolved = open.filter(t => !answered.has(t.id))
+  if (unresolved.length === 0) return []
+  return buildToolResultMessages(unresolved.map(t => ({
+    tool_use_id: t.id,
+    content: `error: tool "${t.name}" was interrupted before its result was recorded (process may have crashed); the effect is unknown — retry only if the operation is read-only or idempotent`,
+  })))
 }
 
 /** 检测死循环：最近 N 次工具调用是否完全相同（同样的 name + args） */

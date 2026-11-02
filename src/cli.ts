@@ -13,7 +13,7 @@ import { Tui, parseSlashCommand, dimText } from './tui.js'
 import { builtinTools } from './tools.js'
 import { anthropicStream } from './anthropic.js'
 import { connectMcpTools } from './mcp.js'
-import { detectLoop } from './context-management.js'
+import { detectLoop, repairOpenToolCalls } from './context-management.js'
 import { RunEventLog } from './event-log.js'
 import { DEFAULT_PROVIDER, getPreset, presetCatalog } from './providers.js'
 import { builtinSkills, buildSkillCatalog, collectSkillTools, createLoadSkillTool } from './skills.js'
@@ -207,6 +207,17 @@ async function main() {
   let eventLog = context.messages.length > 0
     ? (await RunEventLog.open(eventFile, process.cwd())).log
     : await RunEventLog.create(eventFile, process.cwd())
+
+  // 崩溃恢复（P1-2）：尾部有未配对 toolCall（kill -9 所致）时追加合成 error 结果。
+  // 修复 = 追加不改写：同步落 session 与事件日志，下次 -c 看到的就是修复后状态。
+  const repaired = repairOpenToolCalls(context.messages)
+  if (repaired.length > 0) {
+    context.messages.push(...repaired)
+    await persistSession(context.messages, sessionFile)
+    for (const m of repaired) await eventLog.appendMessage(m)
+    await eventLog.appendTurnEnd('interrupted')
+    console.error(dimText(`[recover] 检测到 ${repaired.length} 条未完成工具调用，已补错误结果（上次进程可能被中断）`))
+  }
 
   // 内置工具 + MCP 工具（连接配置的 MCP server，失败只警告不阻塞）
   const mcpTools: AgentTool[] = []
