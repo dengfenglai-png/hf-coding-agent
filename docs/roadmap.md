@@ -80,7 +80,7 @@
 
 **小步拆分**：
 
-- [ ] **P1-1 RunEvent schema + 双写**：新事件日志与现有 session JSONL 并行写，互不破坏；`schema_version` 字段先行
+- [x] **P1-1 RunEvent schema + 双写**：新事件日志与现有 session JSONL 并行写，互不破坏；`schema_version` 字段先行
 - [ ] **P1-2 崩溃恢复**：启动时重放事件日志到最后一个完整 tool_result；悬空 tool_call 补 error result（复用现有 abort 配对逻辑）
 - [ ] **P1-3 重放重建**：从事件流重建 context，替代 messages 加载（`-c` 语义不变）
 - [ ] **P1-4 trace 可视化**：复用 `generate-traces.ts` 的 TraceStep 形态，从真实 RunEvent 导出可浏览 trace

@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { promises as fs } from 'node:fs'
 import * as path from 'node:path'
 import * as os from 'node:os'
-import { loadSession, persistSession, loadConfig, parseApiKeyArg, saveApiKey, friendlyKeyError, projectSessionDir, latestSessionFile, parseContinueFlag } from '../src/cli.js'
+import { loadSession, persistSession, loadConfig, parseApiKeyArg, saveApiKey, friendlyKeyError, projectSessionDir, latestSessionFile, parseContinueFlag, eventFileFor } from '../src/cli.js'
 import type { Message } from '../src/llm.js'
 
 let tmpFile: string
@@ -151,5 +151,10 @@ describe('按项目目录隔离 session', () => {
     expect(parseContinueFlag(['--continue'])).toBe(true)
     expect(parseContinueFlag(['--api-key', 'x'])).toBe(false)
     expect(parseContinueFlag([])).toBe(false)
+  })
+
+  it('eventFileFor：session ↔ events 同 ts 配对', () => {
+    expect(eventFileFor('/x/session-123.jsonl')).toBe('/x/events-123.jsonl')
+    expect(eventFileFor('/x/events-123.jsonl')).toBe('/x/events-123.jsonl')
   })
 })

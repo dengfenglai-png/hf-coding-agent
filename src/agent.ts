@@ -7,7 +7,7 @@
 // 直接 import stream 而非依赖注入——让学习者一眼看到"这是 LLM 交互点"。
 // pi 用 StreamFn 参数注入支持替换后端，教学版省略。
 
-import { stream, buildAssistantMessage, buildToolResultMessages, type Model, type Context, type ToolDef, type StreamEvent } from './llm.js'
+import { stream, buildAssistantMessage, buildToolResultMessages, type Model, type Context, type Message, type ToolDef, type StreamEvent } from './llm.js'
 import { compactTriggerTokens, DEFAULT_CONTEXT_WINDOW, estimateContextTokens, findCompactCut, isSummaryWorthCompacting, KEEP_RECENT_TOKENS } from './context-management.js'
 import { validateArgs } from './tools.js'
 
@@ -34,6 +34,9 @@ export type AgentEvent =
   | { type: 'assistant_text'; delta: string }
   | { type: 'tool_call'; id: string; name: string; args: unknown }
   | { type: 'tool_result'; id: string; name: string; result: string }
+  // 事件日志（P1）：消息落 context 的瞬间通知，持久化层据此按事件粒度落盘
+  | { type: 'message_appended'; message: Message }
+  | { type: 'compaction'; summary: Message; keptFromIndex: number }
   | { type: 'turn_end'; stopReason: 'end_turn' | 'max_tokens' | 'aborted' | 'error' | 'stopped' }
 
 /** shouldStopAfterTurn 回调：每轮后判断是否停止，返回 true 则结束循环（限制步数 / 检测死循环） */
@@ -43,8 +46,14 @@ export type ShouldStopAfterTurnFn = (context: Context) => boolean | Promise<bool
  * 对话压缩：当消息过多时，让 LLM 总结旧消息，用摘要替换。
  * 教的是"context 有上限，满了要压缩"——agent 自管理上下文的核心能力。
  * pi 的实现 970 行含 token 估算/cut point 边界/split turn 等，教学版极简为消息条数近似。
+ * 返回压缩信息供事件日志记录（keptFromIndex 是重放截断点）；未压缩返回 undefined。
  */
-async function compactContext(model: Model, context: Context, streamFn: StreamFn, signal?: AbortSignal): Promise<void> {
+async function compactContext(
+  model: Model,
+  context: Context,
+  streamFn: StreamFn,
+  signal?: AbortSignal,
+): Promise<{ summary: Message; keptFromIndex: number } | undefined> {
   if (signal?.aborted) return  // abort 时不压缩——避免空摘要损坏 context
   const trigger = compactTriggerTokens(model.contextWindow ?? DEFAULT_CONTEXT_WINDOW, model.maxTokens ?? 0)
   if (estimateContextTokens(context) < trigger) return
@@ -81,7 +90,9 @@ async function compactContext(model: Model, context: Context, streamFn: StreamFn
   if (!isSummaryWorthCompacting(summaryText, oldMessages)) return
 
   // 用摘要消息替换旧消息，保留近期消息
-  context.messages = [{ role: 'user', content: summaryText }, ...recentMessages]
+  const summaryMessage: Message = { role: 'user', content: summaryText }
+  context.messages = [summaryMessage, ...recentMessages]
+  return { summary: summaryMessage, keptFromIndex: cut }
 }
 
 /** 一次工具调用（来自 LLM 的 tool_call delta） */
@@ -111,6 +122,11 @@ export type AfterToolCallFn = (name: string, args: unknown, result: string) => P
 
 /** 组内并发的工具调用上限（对应 deepseek 的 maxParallelToolCalls） */
 const MAX_PARALLEL = 4
+
+/** 为每条落 context 的消息发 message_appended 事件（持久化层据此写事件日志） */
+async function* emitAppended(messages: readonly Message[]): AsyncGenerator<AgentEvent> {
+  for (const m of messages) yield { type: 'message_appended', message: m }
+}
 
 /**
  * 把 tool_calls 按独占工具切分成组：连续非独占 = 一个并行组，独占 = 单独一组（barrier）。
@@ -245,7 +261,8 @@ export async function* runAgent(
 
   while (true) {
     // 0. 对话压缩：消息过多时先压缩旧消息
-    await compactContext(model, context, streamFn, signal)
+    const compacted = await compactContext(model, context, streamFn, signal)
+    if (compacted) yield { type: 'compaction', summary: compacted.summary, keptFromIndex: compacted.keptFromIndex }
 
     // 1. 流式调用 LLM，收集文本和 tool_calls
     let text = ''
@@ -263,12 +280,16 @@ export async function* runAgent(
         stopReason = ev.stopReason
         if (ev.stopReason === 'aborted') {
           // abort 时丢弃 tool_calls（无对应 tool_result 会导致 session 恢复后 API 报错）
-          context.messages.push(buildAssistantMessage(text, []))
+          const assistant = buildAssistantMessage(text, [])
+          context.messages.push(assistant)
+          yield { type: 'message_appended', message: assistant }
           yield { type: 'turn_end', stopReason: 'aborted' }
           return
         }
       } else if (ev.type === 'error') {
-        context.messages.push(buildAssistantMessage(text, []))
+        const assistant = buildAssistantMessage(text, [])
+        context.messages.push(assistant)
+        yield { type: 'message_appended', message: assistant }
         yield { type: 'assistant_text', delta: `\n[error] ${ev.error.message}` }
         yield { type: 'turn_end', stopReason: 'error' }
         return
@@ -276,7 +297,9 @@ export async function* runAgent(
     }
 
     // 2. 把 assistant 回复塞回 context
-    context.messages.push(buildAssistantMessage(text, toolCalls))
+    const assistant = buildAssistantMessage(text, toolCalls)
+    context.messages.push(assistant)
+    yield { type: 'message_appended', message: assistant }
 
     // 3. 截断处理：max_tokens 时 tool args 可能不完整，不执行，把错误放回到 Context 让模型重发
     if (stopReason === 'max_tokens' && toolCalls.length > 0) {
@@ -284,7 +307,9 @@ export async function* runAgent(
         tool_use_id: tc.id,
         content: `error: output truncated by max_tokens, tool "${tc.name}" args may be incomplete.`,
       }))
-      context.messages.push(...buildToolResultMessages(results))
+      const resultMessages = buildToolResultMessages(results)
+      context.messages.push(...resultMessages)
+      yield* emitAppended(resultMessages)
       for (let i = 0; i < toolCalls.length; i++) {
         yield { type: 'tool_result', id: toolCalls[i].id, name: toolCalls[i].name, result: results[i].content }
       }
@@ -307,7 +332,9 @@ export async function* runAgent(
     }
 
     // 6. 把 tool_result 放回到 Context，进入下一轮
-    context.messages.push(...buildToolResultMessages(results))
+    const resultMessages = buildToolResultMessages(results)
+    context.messages.push(...resultMessages)
+    yield* emitAppended(resultMessages)
 
     // 7. 每轮后让调用方判断是否该停（限制步数 / 检测死循环）
     if (shouldStopAfterTurn && await shouldStopAfterTurn(context)) {

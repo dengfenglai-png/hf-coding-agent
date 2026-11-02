@@ -67,7 +67,10 @@ describe('runAgent', () => {
     const events: { type: string; [k: string]: unknown }[] = []
     for await (const e of runAgent(model, ctx, [echoTool])) events.push(e)
 
-    expect(events.map(e => e.type)).toEqual(['tool_call', 'tool_result', 'assistant_text', 'turn_end'])
+    // 每条消息落 context 时发 message_appended（P1 事件日志）
+    expect(events.map(e => e.type)).toEqual([
+      'tool_call', 'message_appended', 'tool_result', 'message_appended', 'assistant_text', 'message_appended', 'turn_end',
+    ])
     const tr = events.find(e => e.type === 'tool_result') as { result: string }
     expect(tr.result).toBe('ECHO: hi')
     // 3 条消息：assistant(tool_use) + tool + assistant(text)

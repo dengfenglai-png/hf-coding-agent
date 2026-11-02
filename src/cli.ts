@@ -14,6 +14,7 @@ import { builtinTools } from './tools.js'
 import { anthropicStream } from './anthropic.js'
 import { connectMcpTools } from './mcp.js'
 import { detectLoop } from './context-management.js'
+import { RunEventLog } from './event-log.js'
 import { DEFAULT_PROVIDER, getPreset, presetCatalog } from './providers.js'
 import { builtinSkills, buildSkillCatalog, collectSkillTools, createLoadSkillTool } from './skills.js'
 import { stream, type Model, type Context, type Message, type RetrySettings } from './llm.js'
@@ -46,6 +47,11 @@ export async function latestSessionFile(dir: string): Promise<string | undefined
 /** 解析 -c / --continue：续接该项目最近一次会话 */
 export function parseContinueFlag(argv: string[]): boolean {
   return argv.some(a => a === '-c' || a === '--continue')
+}
+
+/** 事件日志文件与 session 文件同 ts 配对：session-<ts>.jsonl ↔ events-<ts>.jsonl（导出供测试） */
+export function eventFileFor(sessionFile: string): string {
+  return path.join(path.dirname(sessionFile), path.basename(sessionFile).replace(/^session-/, 'events-'))
 }
 
 /** 固定 system prompt */
@@ -195,6 +201,13 @@ async function main() {
     messages: await loadSession(sessionFile),
   }
 
+  // 事件日志（P1 双写）：与 session 文件同 ts 配对，消息落 context 的瞬间写事件。
+  // context 仍以 session JSONL 为准；-c 续接老会话（无事件日志）时 open 会补 header 开始记录。
+  const eventFile = eventFileFor(sessionFile)
+  let eventLog = context.messages.length > 0
+    ? (await RunEventLog.open(eventFile, process.cwd())).log
+    : await RunEventLog.create(eventFile, process.cwd())
+
   // 内置工具 + MCP 工具（连接配置的 MCP server，失败只警告不阻塞）
   const mcpTools: AgentTool[] = []
   for (const server of config.mcpServers ?? []) {
@@ -224,8 +237,8 @@ async function main() {
     process.exit(0)
   }
 
-  /** slash 命令：不进 agent 的本地操作 */
-  const handleCommand = (text: string) => {
+  /** slash 命令：不进 agent 的本地操作（async：/new 需重建事件日志） */
+  const handleCommand = async (text: string): Promise<void> => {
     const cmd = parseSlashCommand(text)
     switch (cmd) {
       case '/help':
@@ -245,6 +258,7 @@ async function main() {
         context.messages = []
         persistedCount = 0
         sessionFile = newSessionFile()
+        eventLog = await RunEventLog.create(eventFileFor(sessionFile), process.cwd())
         tui.printText('已开新会话\n')
         break
       case '/model':
@@ -266,12 +280,14 @@ async function main() {
     try {
       // slash 命令本地处理，不进 agent、不持久化
       if (parseSlashCommand(text)) {
-        handleCommand(text)
+        await handleCommand(text)
         tui.setBusy(false)  // 同步命令完成，触发重新提示（setBusy(false) 即 re-prompt 时机）
         return
       }
 
-      context.messages.push({ role: 'user', content: text })
+      const userMessage: Message = { role: 'user', content: text }
+      context.messages.push(userMessage)
+      await eventLog.appendMessage(userMessage)
 
       tui.setBusy(true)
       tui.startSpinner('thinking…')
@@ -303,6 +319,8 @@ async function main() {
             tui.startSpinner(`tool: ${ev.name}`)
             break
           case 'tool_result': tui.printToolResult(ev.name, ev.result); break
+          case 'message_appended': await eventLog.appendMessage(ev.message); break
+          case 'compaction': await eventLog.appendCompaction(ev.summary, ev.keptFromIndex); break
           case 'turn_end':
             if (ev.stopReason === 'max_tokens') tui.printText('\n[output truncated by max_tokens]')
             if (ev.stopReason === 'error') tui.printText('\n[error occurred]')
@@ -310,6 +328,7 @@ async function main() {
             tui.stopSpinner()
             tui.foldTurn()  // 回合末把工具区收成一行摘要（显示层，不影响 context）
             tui.printTurnEnd()
+            await eventLog.appendTurnEnd(ev.stopReason)
             tui.printText(dimText(`· ${context.messages.length} 条消息 · ${((Date.now() - turnStart) / 1000).toFixed(1)}s\n`))
             break
         }

@@ -68,6 +68,7 @@
 | `src/agent.ts` | Agent loop：while 循环 + 工具调用 + 上下文压缩（项目灵魂） |
 | `src/tui.ts` | 极简终端界面：单行输入 + 流式输出 + Ctrl+C + 回合末工具区折叠（显示层，不影响 context） |
 | `src/tools.ts` | 内置工具（纯函数，不碰 agent 状态） |
+| `src/event-log.ts` | RunEvent 事件日志：append-only run 事实记录（message / turn_end / compaction），foldEvents 重放出 context（P1 双写期 session JSONL 仍为 context 事实来源） |
 | `src/skills.ts` | Skill 机制：name/description 目录进 system prompt，模型用 load_skill 按需加载指令（纯函数） |
 | `src/cli.ts` | 拼装层 + session 持久化（唯一入口） |
 
