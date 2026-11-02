@@ -92,7 +92,7 @@ export async function connectMcpTools(command: string, args: string[] = []): Pro
   await client.sendRequest('initialize', {
     protocolVersion: '2024-11-05',
     capabilities: {},
-    clientInfo: { name: 'pi-from-scratch', version: '0.1.0' },
+    clientInfo: { name: 'hf-coding-agent', version: '0.1.0' },
   })
 
   // 发现工具

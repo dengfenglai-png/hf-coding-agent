@@ -66,11 +66,11 @@
 
 **小步拆分**（每步可独立提交）：
 
-- [ ] **P0-1 身份修正**：`package.json` name/description/keywords/repository 改为 `hf-coding-agent` / `dengfenglai-png/hf-coding-agent`；README 改题为 hf-coding-agent，加定位段与上游 fork 声明（保留 MIT attribution 与 Thanks 章节）
-- [ ] **P0-2 CI**：GitHub Actions——Node 20/22 矩阵跑 `tsc --noEmit` + `vitest run`
-- [ ] **P0-3 SECURITY.md**：漏洞报告渠道；**明确声明 local backend 不构成隔离**，勿在不可信输入下使用
-- [ ] **P0-4 CONTRIBUTING.md**：小步提交约定、测试要求、答疑日志入档规则
-- [ ] **P0-5 docs/architecture.md + docs/threat-model.md 骨架**：信任边界图（上文）；不可信输入清单、有副作用工具清单、暂不解决的风险清单
+- [x] **P0-1 身份修正**：`package.json` name/description/keywords/repository 改为 `hf-coding-agent` / `dengfenglai-png/hf-coding-agent`；README 改题为 hf-coding-agent，加定位段与上游 fork 声明（保留 MIT attribution 与 Thanks 章节）
+- [x] **P0-2 CI**：GitHub Actions——Node 20/22 矩阵跑 `tsc --noEmit` + `vitest run`
+- [x] **P0-3 SECURITY.md**：漏洞报告渠道；**明确声明 local backend 不构成隔离**，勿在不可信输入下使用
+- [x] **P0-4 CONTRIBUTING.md**：小步提交约定、测试要求、答疑日志入档规则
+- [x] **P0-5 docs/architecture.md + docs/threat-model.md 骨架**：信任边界图（上文）；不可信输入清单、有副作用工具清单、暂不解决的风险清单
 
 **验收**：CI 在 push/PR 上绿；GitHub 仓库页能看清 hf-coding-agent 身份与上游关系；`npm pack` 的包名正确。
 
